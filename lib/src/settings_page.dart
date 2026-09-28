@@ -160,25 +160,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 _card(
                   '家长解锁序列（只读）',
                   [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final k in cfg.unlockKeys)
-                          Chip(
-                            label: Text(keyName(k),
-                                style: const TextStyle(fontSize: 16)),
-                          ),
-                        if (cfg.unlockKeys.isEmpty)
-                          const Text('（未设置）',
-                              style: TextStyle(color: Color(0xFF93A1B5))),
-                      ],
-                    ),
+                    _seqRow('序列 1 · 电视遥控器', cfg.unlockKeys),
+                    const SizedBox(height: 12),
+                    _seqRow('序列 2 · 手机音量键', cfg.unlockKeys2),
                     const SizedBox(height: 10),
                     const Text(
-                      '为避免孩子看到解锁方式，此处不再展示与编辑序列。\n'
-                      '如需修改：请在同一局域网的电脑/手机浏览器打开 Web 控制台'
-                      '（地址见主界面"访问地址"），用页面上的虚拟按键点击录入。',
+                      '任一组序列命中即可解锁（锁屏页 / App 验证页 / 打开 App 时）。\n'
+                      '这里只做展示；如需修改：请在同一局域网的电脑/手机浏览器打开 Web 控制台'
+                      '（地址见主界面"访问地址"），点击「显示序列」验证后，用虚拟按键点击录入。',
                       style: TextStyle(fontSize: 14, color: Color(0xFF93A1B5)),
                     ),
                   ],
@@ -432,6 +421,31 @@ class _SettingsPageState extends State<SettingsPage> {
         value: value,
         onChanged: onChanged,
       ),
+    );
+  }
+
+  /// 一组解锁序列的只读展示（带序号 Chip）
+  Widget _seqRow(String label, List<int> keys) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 15, color: Color(0xFF93A1B5))),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final k in keys)
+              Chip(
+                label: Text(keyName(k), style: const TextStyle(fontSize: 16)),
+              ),
+            if (keys.isEmpty)
+              const Text('（未设置）',
+                  style: TextStyle(color: Color(0xFF93A1B5))),
+          ],
+        ),
+      ],
     );
   }
 

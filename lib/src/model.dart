@@ -57,12 +57,16 @@ class TimeSegment {
 class LockConfig {
   static const String modeOpen = 'OPEN';
   static const String modeBlock = 'BLOCK';
+  /// 序列 1 默认：上上下下左左右右（电视遥控器）
   static const List<int> defaultKeys = [19, 19, 20, 20, 21, 21, 22, 22];
+  /// 序列 2 默认：音量+ 音量+ 音量- 音量-（手机）
+  static const List<int> defaultKeys2 = [24, 24, 25, 25];
 
   bool enabled;
   String mode;
   List<TimeSegment> segments;
   List<int> unlockKeys;
+  List<int> unlockKeys2;
   int singleUnlockMinutes;
   String password;
   int port;
@@ -74,13 +78,15 @@ class LockConfig {
     this.mode = modeOpen,
     List<TimeSegment>? segments,
     List<int>? unlockKeys,
+    List<int>? unlockKeys2,
     this.singleUnlockMinutes = 30,
     this.password = '123456',
     this.port = 6666,
     this.forceStop = true,
     this.lockNow = false,
   })  : segments = segments ?? [TimeSegment(start: 18 * 60, end: 20 * 60)],
-        unlockKeys = unlockKeys ?? List<int>.from(defaultKeys);
+        unlockKeys = unlockKeys ?? List<int>.from(defaultKeys),
+        unlockKeys2 = unlockKeys2 ?? List<int>.from(defaultKeys2);
 
   factory LockConfig.fromMap(Map<dynamic, dynamic> m) {
     final segs = <TimeSegment>[];
@@ -98,11 +104,20 @@ class LockConfig {
         if (v > 0) keys.add(v);
       }
     }
+    final keys2 = <int>[];
+    final rawKeys2 = m['unlockKeys2'];
+    if (rawKeys2 is List) {
+      for (final k in rawKeys2) {
+        final v = _asInt(k);
+        if (v > 0) keys2.add(v);
+      }
+    }
     return LockConfig(
       enabled: m['enabled'] == true,
       mode: (m['mode'] ?? modeOpen).toString() == modeBlock ? modeBlock : modeOpen,
       segments: segs.isEmpty ? [TimeSegment(start: 18 * 60, end: 20 * 60)] : segs,
       unlockKeys: keys.isEmpty ? List<int>.from(defaultKeys) : keys,
+      unlockKeys2: keys2.isEmpty ? List<int>.from(defaultKeys2) : keys2,
       singleUnlockMinutes: _asInt(m['singleUnlockMinutes'], def: 30),
       password: (m['password'] ?? '123456').toString(),
       port: _asInt(m['port'], def: 6666),
@@ -116,6 +131,7 @@ class LockConfig {
         'mode': mode,
         'segments': segments.map((s) => s.toMap()).toList(),
         'unlockKeys': unlockKeys,
+        'unlockKeys2': unlockKeys2,
         'singleUnlockMinutes': singleUnlockMinutes,
         'password': password,
         'port': port,

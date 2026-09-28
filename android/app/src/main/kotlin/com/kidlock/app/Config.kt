@@ -76,8 +76,10 @@ class LockConfig {
     /** OPEN = 开放时间段（时段内可看，时段外锁定）；BLOCK = 禁用时间段（仅时段内锁定） */
     var mode: String = MODE_OPEN
     var segments: MutableList<Segment> = ArrayList()
-    /** 遥控器解锁按键序列（Android KeyCode），默认 上上下下左左右右 */
+    /** 解锁序列 1：电视遥控器（Android KeyCode），默认 上上下下左左右右 */
     var unlockKeys: MutableList<Int> = ArrayList()
+    /** 解锁序列 2：手机音量键，默认 音量+ 音量+ 音量- 音量-（任一组命中即可解锁） */
+    var unlockKeys2: MutableList<Int> = ArrayList()
     /** 单次解锁时长（分钟） */
     var singleUnlockMinutes: Int = 30
     /** 管理密码（Web 控制台鉴权） */
@@ -99,6 +101,9 @@ class LockConfig {
         val keys = JSONArray()
         for (k in unlockKeys) keys.put(k)
         o.put("unlockKeys", keys)
+        val keys2 = JSONArray()
+        for (k in unlockKeys2) keys2.put(k)
+        o.put("unlockKeys2", keys2)
         o.put("singleUnlockMinutes", singleUnlockMinutes)
         o.put("password", password)
         o.put("port", port)
@@ -115,6 +120,7 @@ class LockConfig {
         for (s in segments) segs.add(s.toMap())
         m["segments"] = segs
         m["unlockKeys"] = ArrayList(unlockKeys)
+        m["unlockKeys2"] = ArrayList(unlockKeys2)
         m["singleUnlockMinutes"] = singleUnlockMinutes
         m["password"] = password
         m["port"] = port
@@ -135,7 +141,10 @@ class LockConfig {
             s.end = s.end.coerceIn(0, 1439)
         }
         if (unlockKeys.isEmpty()) {
-            unlockKeys.addAll(listOf(19, 19, 20, 20, 21, 21, 22, 22))
+            unlockKeys.addAll(DEFAULT_KEYS)
+        }
+        if (unlockKeys2.isEmpty()) {
+            unlockKeys2.addAll(DEFAULT_KEYS2)
         }
         return this
     }
@@ -143,12 +152,16 @@ class LockConfig {
     companion object {
         const val MODE_OPEN = "OPEN"
         const val MODE_BLOCK = "BLOCK"
-        val DEFAULT_KEYS = listOf(19, 19, 20, 20, 21, 21, 22, 22) // 上上下下左左右右
+        /** 序列 1 默认：上上下下左左右右（电视遥控器） */
+        val DEFAULT_KEYS = listOf(19, 19, 20, 20, 21, 21, 22, 22)
+        /** 序列 2 默认：音量+ 音量+ 音量- 音量-（手机） */
+        val DEFAULT_KEYS2 = listOf(24, 24, 25, 25)
 
         fun defaultConfig(): LockConfig {
             val c = LockConfig()
             c.segments.add(Segment(18 * 60, 20 * 60, BooleanArray(7) { true }))
             c.unlockKeys.addAll(DEFAULT_KEYS)
+            c.unlockKeys2.addAll(DEFAULT_KEYS2)
             return c
         }
 
@@ -169,6 +182,11 @@ class LockConfig {
             if (keys != null) {
                 c.unlockKeys.clear()
                 for (i in 0 until keys.length()) c.unlockKeys.add(keys.optInt(i, 0))
+            }
+            val keys2 = o.optJSONArray("unlockKeys2")
+            if (keys2 != null) {
+                c.unlockKeys2.clear()
+                for (i in 0 until keys2.length()) c.unlockKeys2.add(keys2.optInt(i, 0))
             }
             c.singleUnlockMinutes = o.optInt("singleUnlockMinutes", c.singleUnlockMinutes)
             // 密码留空表示“不修改”（Web 页面读取时密码已隐藏，回传为空）
@@ -199,6 +217,14 @@ class LockConfig {
                 for (k in keys) {
                     val v = Segment.asInt(k, 0)
                     if (v > 0) c.unlockKeys.add(v)
+                }
+            }
+            val keys2 = m["unlockKeys2"]
+            if (keys2 is List<*>) {
+                c.unlockKeys2.clear()
+                for (k in keys2) {
+                    val v = Segment.asInt(k, 0)
+                    if (v > 0) c.unlockKeys2.add(v)
                 }
             }
             c.singleUnlockMinutes = Segment.asInt(m["singleUnlockMinutes"], c.singleUnlockMinutes)

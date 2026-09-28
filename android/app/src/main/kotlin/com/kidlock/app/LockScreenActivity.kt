@@ -57,7 +57,12 @@ class LockScreenActivity : Activity() {
         setContentView(buildUi())
 
         val cfg = ConfigStore.load(this)
-        matcher.setSequence(cfg.unlockKeys.toIntArray())
+        matcher.setSequences(
+            listOf(
+                cfg.unlockKeys.toIntArray(),
+                cfg.unlockKeys2.toIntArray(),
+            )
+        )
 
         // 若此刻已解锁（例如 Web 端刚点了临时解锁），直接退出
         if (!TimeRule.isLocked(

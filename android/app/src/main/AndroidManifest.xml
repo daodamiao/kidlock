@@ -63,6 +63,17 @@
             </intent-filter>
         </activity>
 
+        <!-- 家长验证页：打开 App 前必须输入解锁序列（防止儿童自行打开） -->
+        <!-- 注意：不能用 taskAffinity 另起 task，否则主界面收不到 startActivityForResult 结果 -->
+        <activity
+            android:name=".GateActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:screenOrientation="landscape"
+            android:theme="@style/LockTheme" />
+
         <!-- 全屏锁屏页：吞掉所有遥控器按键（独立 task，避免污染主 task 栈） -->
         <activity
             android:name=".LockScreenActivity"

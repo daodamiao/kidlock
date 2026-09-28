@@ -92,17 +92,25 @@
 </div></div>
 
 <div class="step"><div class="num">3</div><div class="body">
+  <strong>打开一次 App 完成初始化</strong>：点开桌面图标后会先出现「家长验证」页，
+  输入任一组默认暗号即可进入（遥控器：<kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd>；
+  手机：<kbd>音量+</kbd><kbd>音量+</kbd><kbd>音量-</kbd><kbd>音量-</kbd>）。
+  <span class="muted">Android 系统要求：应用被手动启动过才会收到开机自启广播。</span>
+</div></div>
+
+<div class="step"><div class="num">4</div><div class="body">
   <strong>激活设备管理员</strong>（防止儿童卸载 App）：
 <pre><code>adb shell dpm set-active-admin com.kidlock.app/.KidDeviceAdmin</code></pre>
   <span class="muted">也可在 App 内点击「激活设备管理员」按钮，在盒子弹窗中确认。</span>
 </div></div>
 
-<div class="step"><div class="num">4</div><div class="body">
+<div class="step"><div class="num">5</div><div class="body">
   <strong>（可选）升级为设备所有者</strong>（防卸载强度最高，需在<b>未登录任何账号的全新系统</b>上执行）：
 <pre><code>adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin</code></pre>
 </div></div>
 
-<div class="warn">⚠️ <strong>执行顺序很重要：</strong>先做第 3 步防卸载，再交给儿童使用。卸载 App 前必须先在系统设置中停用设备管理员。</div>
+<div class="warn">⚠️ <strong>执行顺序很重要：</strong>先做第 4 步防卸载，再交给儿童使用。卸载 App 前必须先在系统设置中停用设备管理员。<br>
+⚠️ <strong>别忘记暗号：</strong>忘记后需通过 Web 控制台（需管理密码）查看或重设；两组暗号都可自定义，建议改成自己记得住的组合。</div>
 
 <h2>二、时间规则怎么算（核心概念）</h2>
 
@@ -149,9 +157,9 @@
   <tr><td>状态面板</td><td>实时显示：当前是否锁定、下一状态切换时间、服务运行状态、访问地址。</td></tr>
   <tr><td>管控模式</td><td>选择「开放模式」或「禁止模式」。</td></tr>
   <tr><td>时间段列表</td><td>每条可设置开始/结束时间（±5 分钟、±1 小时步进微调）与生效星期；可增删多条。</td></tr>
-  <tr><td>解锁按键序列</td><td>点击「开始绘制」区的虚拟按键依次录入（<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><kbd>OK</kbd>、返回/菜单/空格、数字键）；录入结果实时显示在上方，点 <code>✕</code> 可删除某一步。默认为 <kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd>。<b>锁屏页面不会显示序列</b>，请家长自行牢记。</td></tr>
+  <tr><td>解锁按键序列</td><td>共<b>两组暗号，同时生效</b>：<b>序列 1（遥控器）</b>默认 <kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd>；<b>序列 2（手机音量键）</b>默认 <kbd>音量+</kbd><kbd>音量+</kbd><kbd>音量-</kbd><kbd>音量-</kbd>。<br>出于安全考虑，打开页面时<b>序列默认隐藏</b>；点「显示序列」并输入当前密码后才会展示，此时可在「录入目标」里选择要改哪一组，用虚拟按键依次录入（方向键/音量键/OK/返回/菜单/空格/数字），点 <code>✕</code> 可删某一步。<b>锁屏页与 App 验证页都不会显示序列</b>，请家长自行牢记。</td></tr>
   <tr><td>一次性解锁时长</td><td>按键解锁后保持可用的分钟数，默认 30 分钟（范围 1–1440）。</td></tr>
-  <tr><td>管理密码 / 端口</td><td>「管理密码」留空表示不修改；填新值并保存即生效。改端口后需用新端口重新访问。</td></tr>
+  <tr><td>管理密码 / 端口</td><td>「管理密码」留空表示不修改（页面不回显）；填新值并保存即生效。改端口后需用新端口重新访问。</td></tr>
   <tr><td>操作按钮</td><td>「保存并立即生效」需密码；「立即锁定/一次性解锁/清除解锁/重启 Web 服务/立即备份配置」同样需密码。</td></tr>
 </table>
 
@@ -162,17 +170,31 @@
   20:00 一到立即重新锁屏，不可能借“解锁”混进下一个允许时段。
 </div>
 
-<h2>四、锁屏期间的操作</h2>
+<h2>四、打开 App 需要家长验证（v1.3 新增）</h2>
+
+<p>为了防止孩子自己点开 App 去修改时段、密码或关掉管控，从桌面启动 App 时会先出现 <b>「家长验证」</b> 页面：</p>
+
+<table>
+  <tr><th style="width:200px">动作</th><th>效果</th></tr>
+  <tr><td>点开 App</td><td>先显示「家长验证」页，必须输入任一组解锁暗号才能进入主界面（每次冷启动都要验证）。</td></tr>
+  <tr><td>输入任一组暗号</td><td><kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd> 或 <kbd>音量+</kbd><kbd>音量+</kbd><kbd>音量-</kbd><kbd>音量-</kbd>，输入完整后立即进入 App。</td></tr>
+  <tr><td>没输入 / 按错</td><td>停留在验证页，不显示任何 App 界面；返回键被屏蔽，无法绕过。</td></tr>
+  <tr><td>去系统设置授权后回来</td><td>短时间内不会被重复要求验证，避免家长反复输入。</td></tr>
+  <tr><td>离开 App 超过 3 分钟</td><td>再回来时需要重新验证，避免孩子捡起已打开的 App 乱改。</td></tr>
+  <tr><td>只想退出</td><td>按遥控器 <kbd>HOME</kbd> 键（HOME 由系统处理，App 无法拦截）。</td></tr>
+</table>
+
+<h2>五、锁屏期间的操作</h2>
 
 <table>
   <tr><th style="width:200px">动作</th><th>效果</th></tr>
   <tr><td>锁屏画面出现</td><td>全屏覆盖、无法切后台；遥控器所有按键（方向/OK/返回/菜单/数字/电源等）均被拦截。</td></tr>
-  <tr><td>输入解锁序列</td><td>在锁屏画面上用遥控器按出完整序列（默认 ↑↑↓↓←←→→）。<b>锁屏页不显示序列、也不显示输入进度</b>，防止孩子观察模仿；两次按键间隔超过 3 秒自动重置；连续重复开头（如 ↑↑↑↓…）也能正确匹配。</td></tr>
+  <tr><td>输入解锁序列</td><td>在锁屏画面上按出完整暗号——<b>遥控器</b>用 <kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd>，<b>手机</b>用 <kbd>音量+</kbd><kbd>音量+</kbd><kbd>音量-</kbd><kbd>音量-</kbd>，任一组都可以。<b>锁屏页不显示序列、也不显示输入进度</b>，防止孩子观察模仿；两次按键间隔超过 3 秒自动重置；连续重复开头（如 ↑↑↑↓…）也能正确匹配。</td></tr>
   <tr><td>序列正确</td><td>立即解锁，进入“一次性解锁”倒计时；时间到自动重新锁屏。</td></tr>
   <tr><td>到达解除时间</td><td>无需任何操作，自动解锁并恢复正常使用。</td></tr>
 </table>
 
-<h2>五、稳定性机制</h2>
+<h2>六、稳定性机制</h2>
 
 <ul>
   <li><strong>开机自启</strong>：监听开机完成、App 更新、时间变化等广播，启动后台监控服务。</li>
@@ -181,7 +203,7 @@
   <li><strong>防卸载</strong>：设备管理员激活后，普通方式无法卸载；需先在系统设置停用管理员。</li>
 </ul>
 
-<h2>六、升级与配置不丢失（重要）</h2>
+<h2>七、升级与配置不丢失（重要）</h2>
 
 <div class="card">
   <strong>结论：正常覆盖安装 / 升级 App，开放时间段、密码、端口等所有设置都会保留。</strong>
@@ -213,36 +235,43 @@
   只做第一步的话，下次启动会自动恢复旧配置（这是为了防止误清除，属于设计行为）。
 </div>
 
-<h2>七、进阶：命令行 API（可选）</h2>
+<h2>八、进阶：命令行 API（可选）</h2>
 
 <p>适合脚本/自动化场景，密码通过 <code>pwd</code> 参数传递：</p>
 
 <pre><code># 查看状态（无需密码）
 curl http://&lt;盒子IP&gt;:6666/api/status
 
-# 读取配置（打开页面/接口均无需密码；返回结果中密码字段为空）
+# 读取配置（打开页面/接口均无需密码；密码与两组解锁序列都不下发，只返回步数 keyCount1/keyCount2）
 curl "http://&lt;盒子IP&gt;:6666/api/config"
 
-# 保存配置（body 为完整配置 JSON，必须含正确的 pwd 字段；password 留空=不修改密码）
+# 保存配置（body 为完整配置 JSON，必须含正确的 pwd 字段；password 留空=不修改密码；
+#          不传 unlockKeys / unlockKeys2 = 保持原序列不变）
 curl -X POST http://&lt;盒子IP&gt;:6666/api/config -d '{"pwd":"123456", ...}'
 
-# 执行动作：unlock / lock / clearUnlock / restartWeb
+# 执行动作：unlock / lock / clearUnlock / restartWeb / backup / eval
 curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
-     -d '{"pwd":"123456","action":"lock"}'</code></pre>
+     -d '{"pwd":"123456","action":"lock"}'
 
-<h2>八、常见问题（FAQ）</h2>
+# 查看真实解锁序列（需密码，返回 unlockKeys / unlockKeys2）
+curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
+     -d '{"pwd":"123456","action":"showKeys"}'</code></pre>
+
+<h2>九、常见问题（FAQ）</h2>
 
 <table>
   <tr><th style="width:280px">问题</th><th>解决方法</th></tr>
   <tr><td>网页打不开</td><td>确认手机/电脑与盒子在同一局域网；确认端口未被改动；在 App 主界面确认 Web 服务已运行；必要时点「重启 Web 服务」。</td></tr>
   <tr><td>到点没有锁屏</td><td>确认服务在运行（App 主界面状态卡）；确认已授予「使用情况访问」权限（第 2 步）；确认时段的星期勾选包含今天。</td></tr>
+  <tr><td>打开 App 就要求输入暗号</td><td>这是 v1.3 的家长门禁，属正常行为；输入任一组暗号即可进入。离开 App 超过 3 分钟再回来会再次要求。</td></tr>
+  <tr><td>手机上没有方向键，怎么解锁</td><td>用<b>音量键暗号</b>：<kbd>音量+</kbd><kbd>音量+</kbd><kbd>音量-</kbd><kbd>音量-</kbd>（电视遥控器上同样有效）。</td></tr>
   <tr><td>忘记管理密码</td><td>可在盒子端 App「设置 → 管理密码 → 修改」中用虚拟键盘重设；若 App 也不可用，用 ADB 清除数据：<code>adb shell pm clear com.kidlock.app</code>（配置恢复默认，需重新设置）。</td></tr>
-  <tr><td>忘记解锁序列</td><td>通过网页配置页重新录制新序列；或用网页上的「一次性解锁」按钮。</td></tr>
+  <tr><td>忘记解锁序列</td><td>网页配置页点「显示序列」并输入当前密码即可查看；也可重新录入新序列，或直接用页面上的「一次性解锁」按钮。</td></tr>
   <tr><td>想卸载 App</td><td>先到 系统设置 → 设备管理器/设备管理员 → 停用 KidLock，再常规卸载。</td></tr>
   <tr><td>改了系统时间</td><td>App 会收到时间变化广播并立即重新评估规则，无需重启。</td></tr>
 </table>
 
-<h2>九、默认值速查</h2>
+<h2>十、默认值速查</h2>
 
 <table>
   <tr><th style="width:220px">项目</th><th>默认值</th></tr>
@@ -250,12 +279,15 @@ curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
   <tr><td>Web 端口</td><td><code>6666</code>（旧版 8080 会自动迁移）</td></tr>
   <tr><td>管控模式</td><td>开放模式（OPEN）</td></tr>
   <tr><td>默认时间段</td><td>18:00 – 20:00，每天生效</td></tr>
-  <tr><td>解锁序列</td><td><kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd></td></tr>
+  <tr><td>解锁序列 1（遥控器）</td><td><kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd></td></tr>
+  <tr><td>解锁序列 2（手机音量键）</td><td><kbd>音量+</kbd><kbd>音量+</kbd><kbd>音量-</kbd><kbd>音量-</kbd></td></tr>
   <tr><td>一次性解锁时长</td><td>30 分钟</td></tr>
   <tr><td>按键间隔重置</td><td>3 秒</td></tr>
+  <tr><td>打开 App</td><td>需先输入暗号（每次冷启动）</td></tr>
+  <tr><td>离开后重新验证</td><td>超过 3 分钟</td></tr>
 </table>
 
-<p class="muted" style="margin-top:30px">KidLock v1.0.0 · Flutter 3.47.5 + Kotlin · targetSdk 25 / minSdk 24 · arm64-v8a</p>
+<p class="muted" style="margin-top:30px">KidLock v1.3 · Flutter 3.47.5 + Kotlin · targetSdk 25 / minSdk 24 · arm64-v8a</p>
 </div>
 </body>
 </html>

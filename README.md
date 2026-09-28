@@ -45,8 +45,9 @@ KidLock/
     │   ├── MainActivity.kt               # FlutterActivity + MethodChannel
     │   ├── MonitorService.kt             # 常驻服务：定时 / 抢前台 / 杀进程 / 闹钟 / 心跳 / Web
     │   ├── LockScreenActivity.kt         # 全屏锁屏页：吞掉所有遥控器按键
+    │   ├── GateActivity.kt               # 家长验证门禁页：打开 App 前必须输入序列
     │   ├── TimeRule.kt                   # 规则引擎：两种模式 / 多段 / 星期 / 跨零点
-    │   ├── KeySequenceMatcher.kt         # 遥控器按键序列匹配（默认上上下下左左右右）
+    │   ├── KeySequenceMatcher.kt         # 多组解锁序列并行匹配（遥控器方向键 / 手机音量键）
     │   ├── ForegroundHelper.kt           # 前台应用识别（UsageStats + 降级）
     │   ├── ConfigStore.kt / Config.kt    # 配置模型 + SharedPreferences 持久化
     │   ├── ConfigWebServer.kt            # 内嵌 HTTP 服务（配置页 + JSON API）
@@ -115,8 +116,21 @@ adb shell appops set com.kidlock.app GET_USAGE_STATS allow     # 推荐
 - HOME 键无法被普通应用拦截，用三条措施兜底：① 服务 10s 轮询 + 3s 重试，锁屏被盖住就重新弹出；② 锁屏已显示时若仍有第三方应用抢前台，直接杀掉；③ 设备管理器固化。
 - 锁屏页是**独立 task**（`taskAffinity` + `excludeFromRecents`），不污染主界面返回栈。
 
-### 3. 单次解锁（遥控器按键序列）
-- 默认 `上上下下左左右右`（KeyCode 19,19,20,20,21,21,22,22），Web 页与 App 设置页均可自定义；3 秒内未按完则重新匹配。
+### 3. 解锁序列（两组并行，任一组命中即可）
+- **序列 1 · 电视遥控器**：默认 `上 上 下 下 左 左 右 右`（KeyCode 19,19,20,20,21,21,22,22）
+- **序列 2 · 手机音量键**：默认 `音量+ 音量+ 音量- 音量-`（KeyCode 24,24,25,25）
+- 不做设备类型判断：**两种序列同时生效**，遥控器盒子与手机都能用同一套解锁方式。
+- 3 秒内未按完则重新匹配，允许“重叠开头”（如 `↑↑↓` 后再按 `↑↑↓↓←←→→` 仍可命中）。
+- 三处入口共用同一匹配器：**锁屏页**、**打开 App 的家长验证页**、解锁后的放行判定。
+- 可自定义，但只能在 **Web 控制台**修改（虚拟按键点击录入，不录制真实按键）。
+
+### 3.1 打开 App 也要验证（家长门禁 GateActivity）
+- 冷启动进入 App 前先弹出「家长验证」页，必须输入任一序列才能看到主界面，**防止孩子自己打开 App 改配置**。
+- 验证页吞掉所有按键（含返回键），验证不通过直接退到后台，不展示任何界面。
+- 短暂切到后台再回来（如去系统设置授权）不会重复要求；离开 App 超过 **3 分钟**再回来需重新验证。
+- HOME 键由系统处理，家长可随时按 HOME 退出。
+
+### 3.2 单次解锁时长
 - 命中后：`解锁截止 = min(单次解锁时长, 本次锁定的自然结束时刻)` → **保证下一个禁用时间点仍然会锁**，也保证解锁时长不会溢出到下一段开放时间。
 
 ### 4. 两种时间模式 + 多段 + 星期 + 跨零点
@@ -164,16 +178,18 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 ```
 
 ### 配置（局域网 Web）
-1. 打开盒子上的「儿童限时管控」，屏幕显示 `http://192.168.x.x:8080`；
+1. 打开盒子上的「儿童限时管控」（需先输入家长解锁序列），屏幕显示 `http://192.168.x.x:6666`；
 2. 同一 WiFi 下的电脑 / 手机浏览器打开该地址；
-3. 填入默认密码 **`123456`** → 「读取配置」→ 修改 → 「保存并立即生效」；
-4. 建议第一时间改掉管理密码。
+3. 页面**自动读取**当前配置（无需密码）；修改后填入「当前密码」（默认 **`123456`**）→ 「保存并立即生效」；
+4. 解锁序列默认**隐藏**：点「显示序列」并输入当前密码后才可见/可编辑，用虚拟按键点击录入；
+5. 建议第一时间改掉管理密码。
 
-也可直接用遥控器在盒子端「设置」页里改（支持遥控器按键录制）。
+盒子端「设置」页也支持遥控器操作，但**解锁序列只做只读展示**，修改请走 Web 控制台。
 
 ### 默认配置
 - 模式：开放时间段（18:00–20:00，全星期）
-- 解锁序列：上 上 下 下 左 左 右 右
+- 解锁序列 1（遥控器）：上 上 下 下 左 左 右 右
+- 解锁序列 2（手机音量键）：音量+ 音量+ 音量- 音量-
 - 单次解锁：30 分钟；端口：6666；密码：123456
 - 配置双保险：内部 SharedPreferences（升级/覆盖安装保留）+ 外部备份 `/sdcard/KidLock/kidlock_config.json`（卸载重装自动恢复）
 
@@ -184,9 +200,9 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/status` | 状态快照（无需密码） |
-| GET | `/api/config` | 读取配置（无需密码，密码字段返回为空） |
-| POST | `/api/config` | JSON（含 `pwd` 校验）保存并立即生效；`password` 留空表示不修改 |
-| POST | `/api/action` | `{pwd, action}`，action ∈ `unlock` / `lock` / `clearUnlock` / `restartWeb` / `eval` |
+| GET | `/api/config` | 读取配置（无需密码；`password` 与两组 `unlockKeys*` 均不下发，只返回步数 `keyCount1/keyCount2`） |
+| POST | `/api/config` | JSON（含 `pwd` 校验）保存并立即生效；`password` 留空表示不修改；未提交 `unlockKeys*` 则保持原序列不变 |
+| POST | `/api/action` | `{pwd, action}`，action ∈ `unlock` / `lock` / `clearUnlock` / `restartWeb` / `backup` / `eval` / `showKeys`（校验密码后返回两组真实序列） |
 
 配置 JSON 示例：
 
@@ -196,9 +212,10 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
   "mode": "OPEN",
   "segments": [{ "start": 1080, "end": 1200, "days": [1,1,1,1,1,1,1] }],
   "unlockKeys": [19,19,20,20,21,21,22,22],
+  "unlockKeys2": [24,24,25,25],
   "singleUnlockMinutes": 30,
   "password": "123456",
-  "port": 8080,
+  "port": 6666,
   "forceStop": true,
   "lockNow": false
 }
@@ -229,6 +246,7 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | 浏览器打不开 | 确认电脑 / 手机与盒子同网段；端口被占用可改成 8081 后保存 |
 | 到点没锁住 | 看 App 首页「守护中」徽标；`adb shell dumpsys activity services com.kidlock.app` |
 | 杀不掉播放器 | 授权 `GET_USAGE_STATS`；部分系统级播放器可改为开启「到点黑屏锁屏」 |
-| 按序列没解锁 | 需 3 秒内按完；确认设置页里的序列与实际按键一致（可在设置页重新录制） |
+| 按序列没解锁 | 需 3 秒内按完；确认 Web 控制台「显示序列」里的两组序列与实际按键一致（遥控器方向键 / 手机音量键都可） |
+| 打开 App 就要求验证 | 正常：冷启动必须验证家长序列；离开超过 3 分钟再回来也会要求，避免孩子自己打开改配置 |
 | 卸载不了 | 先「设置 → 安全 → 设备管理器」取消激活，或 `adb shell dpm remove-active-admin com.kidlock.app/.KidDeviceAdmin` |
 | 遥控器在主界面不听使唤 | 用方向键 + 确认键导航；密码 / 端口输入框需要外接键盘，或改用 Web 配置 |

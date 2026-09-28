@@ -22,6 +22,7 @@ object ConfigStore {
 
     private const val BACKUP_FILE = "kidlock_config.json"
     private const val PUBLIC_DIR = "KidLock"
+    private const val K_GATE_UNTIL = "gate_until"
 
     private fun prefs(c: Context) =
         c.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -160,4 +161,16 @@ object ConfigStore {
     fun setManualLock(c: Context, v: Boolean) {
         prefs(c).edit().putBoolean(K_MANUAL_LOCK, v).apply()
     }
+
+    // ------------------------------------------------------------ App 门禁（家长验证）
+
+    /** 家长验证的放行截止时间戳（毫秒），未验证或已过期返回 0 */
+    fun getGateUntil(c: Context): Long = prefs(c).getLong(K_GATE_UNTIL, 0L)
+
+    fun setGateUntil(c: Context, ts: Long) {
+        prefs(c).edit().putLong(K_GATE_UNTIL, ts).apply()
+    }
+
+    /** 当前是否处于“已验证放行”状态 */
+    fun isGateValid(c: Context): Boolean = getGateUntil(c) > System.currentTimeMillis()
 }

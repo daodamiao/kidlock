@@ -77,20 +77,52 @@
   </div>
 
   <div class="card">
-    <h3>遥控器单次解锁</h3>
-    <div class="hint" style="margin-bottom:6px">录入结果（点击 ✕ 可删除某一步，需在锁屏页按同样顺序按出）：</div>
-    <div class="keys" id="keys"></div>
-    <div class="hint" style="margin:10px 0 4px">点击下方虚拟按键依次录入：</div>
-    <div class="pad" id="pad"></div>
-    <div class="row">
-      <button class="ghost" id="clearKey">清空</button>
-      <button class="ghost" id="delLast">删最后一步</button>
-      <button class="ghost" id="presetKey">恢复默认（上上下下左左右右）</button>
+    <h3>解锁序列（默认隐藏）</h3>
+    <div class="hint" style="margin-bottom:6px">
+      任意一组序列命中即可解锁。安全起见，打开页面时<b>不显示已配置的序列</b>，
+      点击「显示序列」并输入当前密码后才可见 / 可编辑。
     </div>
+
+    <div class="seg">
+      <div class="row" style="margin:0">
+        <b>序列 1 · 电视遥控器</b>
+        <span class="hint" id="seq1info"></span>
+      </div>
+      <div class="keys" id="keys"></div>
+    </div>
+
+    <div class="seg">
+      <div class="row" style="margin:0">
+        <b>序列 2 · 手机音量键</b>
+        <span class="hint" id="seq2info"></span>
+      </div>
+      <div class="keys" id="keys2"></div>
+    </div>
+
+    <div class="row">
+      <button class="ghost" id="showKeys">显示序列（需当前密码）</button>
+      <button class="ghost" id="hideKeys">重新隐藏</button>
+      <button class="ghost" id="presetKey">恢复默认（遥控器 ↑↑↓↓←←→→ / 手机 音量+音量+音量-音量-）</button>
+    </div>
+
+    <div id="editArea" style="display:none">
+      <div class="hint" style="margin:10px 0 4px">
+        录入目标：
+        <label><input type="radio" name="seqTarget" value="1" checked> 序列 1（遥控器）</label>
+        <label><input type="radio" name="seqTarget" value="2"> 序列 2（手机音量键）</label>
+      </div>
+      <div class="hint">点击下方虚拟按键依次录入；手机用音量键，电视遥控器用方向键。</div>
+      <div class="pad" id="pad"></div>
+      <div class="row">
+        <button class="ghost" id="delLast">删最后一步</button>
+        <button class="ghost" id="clearKey">清空当前序列</button>
+      </div>
+    </div>
+
     <div class="row">
       <label>单次解锁时长（分钟）<input type="number" id="singleUnlockMinutes" min="1" max="1440"></label>
     </div>
-    <div class="hint">单次解锁只在本段锁定内有效，到下一个禁用时间点会自动重新锁定；锁屏页不会显示序列，请家长自行牢记。</div>
+    <div class="hint">单次解锁只在本段锁定内有效，到下一个禁用时间点会自动重新锁定；锁屏页与 App 验证页都不会显示序列，请家长自行牢记。</div>
   </div>
 
   <div class="card">
@@ -131,9 +163,12 @@
 var $ = function(id){ return document.getElementById(id); };
 var cfg = null;
 
+var keysRevealed = false;   // 是否已输入密码显示序列
+
 var KEY_NAMES = {
   19:'↑ 上', 20:'↓ 下', 21:'← 左', 22:'→ 右', 23:'OK 确认',
   4:'返回', 82:'菜单', 62:'空格',
+  24:'音量+', 25:'音量-',
   7:'0', 8:'1', 9:'2', 10:'3', 11:'4',
   12:'5', 13:'6', 14:'7', 15:'8', 16:'9'
 };
@@ -215,28 +250,56 @@ function renderSegments(){
   });
 }
 
-function renderKeys(){
-  var box = $('keys');
+function renderOneKeys(boxId, arr, seqNo){
+  var box = $(boxId);
   box.innerHTML = '';
-  (cfg.unlockKeys || []).forEach(function(k, i){
-    var s = document.createElement('span');
-    s.className = 'key';
-    s.innerHTML = (i + 1) + '. ' + (KEY_NAMES[k] || ('KeyCode ' + k)) + '<span class="x" data-i="' + i + '">✕</span>';
-    box.appendChild(s);
-  });
-  if (!(cfg.unlockKeys || []).length){
+  if (!keysRevealed){
     var e = document.createElement('span');
     e.className = 'key';
     e.style.color = '#93a1b5';
-    e.textContent = '（尚未录入，请点击下方虚拟按键）';
+    e.textContent = '🔒 已隐藏';
     box.appendChild(e);
+    return;
+  }
+  (arr || []).forEach(function(k, i){
+    var s = document.createElement('span');
+    s.className = 'key';
+    s.innerHTML = (i + 1) + '. ' + (KEY_NAMES[k] || ('KeyCode ' + k)) +
+                  '<span class="x" data-seq="' + seqNo + '" data-i="' + i + '">✕</span>';
+    box.appendChild(s);
+  });
+  if (!(arr || []).length){
+    var e2 = document.createElement('span');
+    e2.className = 'key';
+    e2.style.color = '#93a1b5';
+    e2.textContent = '（空：请至少录入一个按键）';
+    box.appendChild(e2);
   }
   box.querySelectorAll('.x').forEach(function(el){
     el.onclick = function(){
-      cfg.unlockKeys.splice(+el.dataset.i, 1);
+      var target = (+el.dataset.seq === 2) ? cfg.unlockKeys2 : cfg.unlockKeys;
+      target.splice(+el.dataset.i, 1);
       renderKeys();
     };
   });
+}
+
+function renderKeys(){
+  renderOneKeys('keys', cfg.unlockKeys, 1);
+  renderOneKeys('keys2', cfg.unlockKeys2, 2);
+  $('seq1info').textContent = keysRevealed
+      ? '（共 ' + (cfg.unlockKeys || []).length + ' 步）'
+      : '（已配置 ' + (cfg.keyCount1 || 0) + ' 步，已隐藏）';
+  $('seq2info').textContent = keysRevealed
+      ? '（共 ' + (cfg.unlockKeys2 || []).length + ' 步）'
+      : '（已配置 ' + (cfg.keyCount2 || 0) + ' 步，已隐藏）';
+  $('editArea').style.display = keysRevealed ? 'block' : 'none';
+}
+
+function currentTarget(){
+  var els = document.getElementsByName('seqTarget');
+  for (var i = 0; i < els.length; i++){ if (els[i].checked) return +els[i].value; }
+  return 1;
 }
 
 function renderPad(){
@@ -244,6 +307,7 @@ function renderPad(){
   pad.innerHTML = '';
   var buttons = [
     [19, '↑'], [20, '↓'], [21, '←'], [22, '→'], [23, 'OK'],
+    [24, '音量+'], [25, '音量-'],
     [4, '返回'], [82, '菜单'], [62, '空格'],
     [7,'0'],[8,'1'],[9,'2'],[10,'3'],[11,'4'],[12,'5'],[13,'6'],[14,'7'],[15,'8'],[16,'9']
   ];
@@ -252,7 +316,9 @@ function renderPad(){
     btn.textContent = b[1];
     btn.title = KEY_NAMES[b[0]] || ('KeyCode ' + b[0]);
     btn.onclick = function(){
-      cfg.unlockKeys.push(b[0]);
+      if (!keysRevealed){ msg('请先点击「显示序列」并输入当前密码', true); return; }
+      var target = (currentTarget() === 2) ? cfg.unlockKeys2 : cfg.unlockKeys;
+      target.push(b[0]);
       renderKeys();
     };
     pad.appendChild(btn);
@@ -260,27 +326,85 @@ function renderPad(){
 }
 
 function collect(){
-  cfg.enabled = $('enabled').checked;
-  cfg.mode = $('mode').value;
-  cfg.singleUnlockMinutes = parseInt($('singleUnlockMinutes').value, 10) || 30;
-  cfg.password = $('password').value;
-  cfg.port = parseInt($('port').value, 10) || 6666;
-  cfg.forceStop = $('forceStop').checked;
-  cfg.lockNow = $('lockNow').checked;
-  return cfg;
+  var payload = {
+    enabled: $('enabled').checked,
+    mode: $('mode').value,
+    singleUnlockMinutes: parseInt($('singleUnlockMinutes').value, 10) || 30,
+    password: $('password').value,
+    port: parseInt($('port').value, 10) || 6666,
+    forceStop: $('forceStop').checked,
+    lockNow: $('lockNow').checked,
+    segments: cfg.segments
+  };
+  // 序列默认隐藏：只有点过「显示序列」并验证密码后，才把序列一起提交。
+  // 否则不提交 unlockKeys / unlockKeys2，服务端会保持原序列不变（防止误覆盖）。
+  if (keysRevealed){
+    payload.unlockKeys  = (cfg.unlockKeys  || []).slice();
+    payload.unlockKeys2 = (cfg.unlockKeys2 || []).slice();
+  }
+  return payload;
 }
 
 function fill(c){
+  // 服务端恒定不下发真实序列（只给步数）。若当前处于「已显示」状态，
+  // 保留本地已拉取到的序列，避免刷新/保存后被清空。
+  var keep1 = keysRevealed ? (cfg && cfg.unlockKeys  ? cfg.unlockKeys.slice()  : null) : null;
+  var keep2 = keysRevealed ? (cfg && cfg.unlockKeys2 ? cfg.unlockKeys2.slice() : null) : null;
+
   cfg = c;
   $('enabled').checked = !!c.enabled;
   $('mode').value = c.mode;
   $('singleUnlockMinutes').value = c.singleUnlockMinutes;
-  $('password').value = c.password;
+  // 管理密码一律不在页面回显（留空 = 不修改），避免明文暴露
+  $('password').value = '';
   $('port').value = c.port;
   $('forceStop').checked = !!c.forceStop;
   $('lockNow').checked = !!c.lockNow;
+
+  cfg.keyCount1 = c.keyCount1 || ((c.unlockKeys  && c.unlockKeys.length)  || 0);
+  cfg.keyCount2 = c.keyCount2 || ((c.unlockKeys2 && c.unlockKeys2.length) || 0);
+  if (keysRevealed){
+    if (!Array.isArray(c.unlockKeys) || !c.unlockKeys.length){
+      cfg.unlockKeys = keep1 || [];
+    }
+    if (!Array.isArray(c.unlockKeys2) || !c.unlockKeys2.length){
+      cfg.unlockKeys2 = keep2 || [];
+    }
+  } else {
+    cfg.unlockKeys  = [];
+    cfg.unlockKeys2 = [];
+  }
   renderSegments();
   renderKeys();
+}
+
+// 「显示序列」：验证密码后拉取两组真实序列
+function showKeys(){
+  var pwd = $('pwd').value;
+  if(!pwd){ msg('显示序列需要验证密码：请填写「当前密码」', true); return; }
+  api('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pwd: pwd, action: 'showKeys' })
+  }).then(function(r){
+    if(!r.ok){ msg('显示失败：' + (r.error || '未知错误'), true); return; }
+    cfg.unlockKeys  = (r.unlockKeys  || []).slice();
+    cfg.unlockKeys2 = (r.unlockKeys2 || []).slice();
+    cfg.keyCount1 = cfg.unlockKeys.length;
+    cfg.keyCount2 = cfg.unlockKeys2.length;
+    keysRevealed = true;
+    renderKeys();
+    msg('序列已显示，可修改后点击「保存配置」');
+  });
+}
+
+// 「重新隐藏」：清空本地序列，回到隐藏态（未保存的改动一并丢弃）
+function hideKeys(){
+  keysRevealed = false;
+  cfg.unlockKeys  = [];
+  cfg.unlockKeys2 = [];
+  renderKeys();
+  msg('序列已重新隐藏（未保存的改动已丢弃）');
 }
 
 function msg(text, warn){
@@ -290,16 +414,19 @@ function msg(text, warn){
 
 function loadConfig(){
   // 打开页面即自动读取，无需密码（密码仅用于写入校验）
+  // 注意：两组解锁序列默认不下发，需点击「显示序列」并验证密码后才展示
   api('/api/config').then(function(r){
     if(!r.ok){ msg('配置读取失败：' + (r.error || '未知错误'), true); return; }
     fill(r.config);
-    msg('配置已自动加载' + (r.config && r.config.password === '' ? '（密码已隐藏，留空保存即不修改）' : ''));
+    msg('配置已自动加载；解锁序列已隐藏，如需查看/修改请点击「显示序列」并输入当前密码');
   });
 }
 
 function save(){
   var pwd = $('pwd').value;
   if(!pwd){ msg('保存需要验证密码：请填写「当前密码」', true); return; }
+  var newPw = $('password').value;          // 管理密码框有值 = 要改密码
+  var changingPw = !!newPw;
   var payload = collect();
   payload.pwd = pwd;
   api('/api/config', {
@@ -309,7 +436,9 @@ function save(){
   }).then(function(r){
     if(!r.ok){ msg('保存失败：' + (r.error || '未知错误'), true); return; }
     fill(r.config);
-    msg('已保存并生效' + (r.config && r.config.password === '' ? '（管理密码未修改）' : '，管理密码已更新'));
+    if (changingPw) $('pwd').value = newPw;  // 密码已变，同步「当前密码」避免后续操作失败
+    msg('已保存并生效' + (changingPw ? '，管理密码已更新' : '（管理密码未修改）')
+        + (keysRevealed ? '' : '（解锁序列未改动）'));
     loadStatus();
   });
 }
@@ -333,9 +462,24 @@ function action(a){
     cfg.segments.push({ start: 18*60, end: 20*60, days: [1,1,1,1,1,1,1] });
     renderSegments();
   };
-  $('clearKey').onclick = function(){ cfg.unlockKeys = []; renderKeys(); };
-  $('delLast').onclick = function(){ cfg.unlockKeys.pop(); renderKeys(); };
-  $('presetKey').onclick = function(){ cfg.unlockKeys = [19,19,20,20,21,21,22,22]; renderKeys(); };
+  $('showKeys').onclick = showKeys;
+  $('hideKeys').onclick = hideKeys;
+  $('clearKey').onclick = function(){
+    if (currentTarget() === 2){ cfg.unlockKeys2 = []; } else { cfg.unlockKeys = []; }
+    renderKeys();
+  };
+  $('delLast').onclick = function(){
+    var t = (currentTarget() === 2) ? cfg.unlockKeys2 : cfg.unlockKeys;
+    t.pop();
+    renderKeys();
+  };
+  $('presetKey').onclick = function(){
+    if (!keysRevealed){ msg('请先点击「显示序列」并输入当前密码', true); return; }
+    cfg.unlockKeys  = [19,19,20,20,21,21,22,22];
+    cfg.unlockKeys2 = [24,24,25,25];
+    renderKeys();
+    msg('已填入默认序列，点击「保存配置」后生效');
+  };
   $('save').onclick = save;
   $('unlock').onclick = function(){ action('unlock'); };
   $('lock').onclick = function(){ action('lock'); };
@@ -343,12 +487,13 @@ function action(a){
   $('restartWeb').onclick = function(){ action('restartWeb'); };
   $('backupNow').onclick = function(){ action('backup'); };
 
-  cfg = { enabled:true, mode:'OPEN', segments:[], unlockKeys:[19,19,20,20,21,21,22,22],
+  cfg = { enabled:true, mode:'OPEN', segments:[],
+          unlockKeys:[], unlockKeys2:[], keyCount1:0, keyCount2:0,
           singleUnlockMinutes:30, password:'', port:6666, forceStop:true, lockNow:false };
   renderSegments();
   renderKeys();
   renderPad();
-  loadConfig();          // 打开页面自动读取配置，无需密码
+  loadConfig();          // 打开页面自动读取配置，无需密码（序列默认隐藏）
   loadStatus();
   setInterval(loadStatus, 10000);
 })();

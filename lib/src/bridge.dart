@@ -60,6 +60,10 @@ String keyName(int code) {
       return '菜单';
     case 62:
       return '空格';
+    case 24:
+      return '音量+';
+    case 25:
+      return '音量-';
     default:
       if (code >= 7 && code <= 16) return '${code - 7}';
       return 'K$code';

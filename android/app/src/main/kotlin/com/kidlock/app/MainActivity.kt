@@ -22,11 +22,57 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "com.kidlock.app/bridge"
         private const val TAG = "KidLock.Main"
         private const val REQ_STORAGE = 1001
+        private const val REQ_GATE = 1002
+
+        /** 离开 App 超过该时长后回来需重新做家长验证 */
+        private const val REGATE_AFTER_MS = 3 * 60 * 1000L
     }
+
+    /** 是否已弹出家长验证页，避免重复启动 */
+    private var gateInProgress = false
+
+    /** 本次进入是否已通过家长验证（进程内首次进入必须验证） */
+    private var gatePassed = false
+
+    /** 最近一次进入后台的时间戳，用于判断“离开多久后需要重新验证” */
+    private var lastPauseAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestStoragePermissionIfNeeded()
+        // 家长验证统一放在 onResume 里做（此时 Activity 已 RESUMED，startActivityForResult 最可靠）
+    }
+
+    /**
+     * 打开 App 前的家长验证：未放行则弹出门禁页。
+     * 规则：
+     *  · 每次冷启动（进程内首次进入）都必须验证序列 —— 防止孩子自己打开 App。
+     *  · 短暂切到后台再回来（如去系统设置授权）不重复要求，避免家长反复输入。
+     *  · 离开 App 超过 REGATE_AFTER_MS 再回来时重新验证。
+     */
+    private fun ensureGate() {
+        try {
+            if (gatePassed) return
+            if (gateInProgress) return
+            gateInProgress = true
+            startActivityForResult(Intent(this, GateActivity::class.java), REQ_GATE)
+        } catch (t: Throwable) {
+            Log.w(TAG, "ensureGate failed", t)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_GATE) {
+            gateInProgress = false
+            if (resultCode == RESULT_OK) {
+                gatePassed = true
+            } else {
+                // 未通过验证：不展示 App 界面，直接退到后台
+                gatePassed = false
+                moveTaskToBack(true)
+            }
+        }
     }
 
     /**
@@ -138,9 +184,19 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    override fun onPause() {
+        super.onPause()
+        lastPauseAt = System.currentTimeMillis()
+    }
+
     override fun onResume() {
         super.onResume()
         // 每次回到前台都确保守护服务在跑
         MonitorService.start(this)
+        // 离开 App 较久后回来（或首次进入）需要重新做家长验证
+        if (lastPauseAt > 0L && System.currentTimeMillis() - lastPauseAt > REGATE_AFTER_MS) {
+            gatePassed = false
+        }
+        ensureGate()
     }
 }

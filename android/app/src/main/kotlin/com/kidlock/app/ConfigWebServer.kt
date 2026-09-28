@@ -147,13 +147,18 @@ class ConfigWebServer(private val appContext: Context) {
 
     /**
      * 读取配置：打开页面即自动调用，无需密码（便于展示与编辑）。
-     * 出于安全考虑，返回结果中不包含管理密码明文（置空），
-     * 只有保存 / 执行操作时才校验密码。
+     * 出于安全考虑，返回结果中：
+     *  · 管理密码置空
+     *  · 两组解锁序列一律为空（只返回步数），需点击「显示序列」并验证密码后才下发
      */
     private fun handleGetConfig(out: OutputStream, query: Map<String, String>) {
         val cfg = ConfigStore.load(appContext)
         val safe = cfg.toJson()
         safe.put("password", "")
+        safe.put("unlockKeys", org.json.JSONArray())
+        safe.put("unlockKeys2", org.json.JSONArray())
+        safe.put("keyCount1", cfg.unlockKeys.size)
+        safe.put("keyCount2", cfg.unlockKeys2.size)
         json(out, JSONObject().put("ok", true).put("config", safe))
     }
 
@@ -171,6 +176,13 @@ class ConfigWebServer(private val appContext: Context) {
             // 页面未提交新密码（读取时已隐藏）时保持原密码不变
             if (o.optString("password", "").isEmpty()) {
                 next.password = cur.password
+            }
+            // 未点击「显示序列」时页面不会提交序列 → 保持原有序列不变
+            if (!o.has("unlockKeys")) {
+                next.unlockKeys = ArrayList(cur.unlockKeys)
+            }
+            if (!o.has("unlockKeys2")) {
+                next.unlockKeys2 = ArrayList(cur.unlockKeys2)
             }
             val oldPort = cur.port
             ConfigStore.save(appContext, next)
@@ -195,7 +207,23 @@ class ConfigWebServer(private val appContext: Context) {
                 json(out, JSONObject().put("ok", false).put("error", "密码错误"))
                 return
             }
-            when (o.optString("action", "")) {
+            val action = o.optString("action", "")
+            // 「显示序列」：需要密码，返回两组真实序列
+            if (action == "showKeys") {
+                val cfg = ConfigStore.load(appContext)
+                val k1 = org.json.JSONArray()
+                for (k in cfg.unlockKeys) k1.put(k)
+                val k2 = org.json.JSONArray()
+                for (k in cfg.unlockKeys2) k2.put(k)
+                json(
+                    out,
+                    JSONObject().put("ok", true)
+                        .put("unlockKeys", k1)
+                        .put("unlockKeys2", k2)
+                )
+                return
+            }
+            when (action) {
                 "unlock" -> MonitorService.act(appContext, MonitorService.ACTION_UNLOCK_ONCE)
                 "lock" -> MonitorService.act(appContext, MonitorService.ACTION_LOCK_NOW)
                 "clearUnlock" -> MonitorService.act(appContext, MonitorService.ACTION_CLEAR_UNLOCK)
