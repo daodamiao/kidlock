@@ -4,6 +4,8 @@
 TV 端界面用 **Flutter（Dart）**，系统级能力（常驻服务 / 全屏锁屏 / 按键拦截 / 杀进程 / 设备管理器 / 内嵌 Web 服务）用 **Kotlin 原生**实现，二者通过 MethodChannel 通信。
 
 ---
+This project source code is available for non-commercial use only. Commercial use requires written authorization. 
+本项目源码仅允许非商业使用，商业使用需要作者书面授权
 
 ## 一、技术选型
 
