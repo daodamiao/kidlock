@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">儿童限时管控</string>
+    <string name="notify_running">守护服务运行中</string>
+
+    <string name="lock_title">休息时间到了</string>
+    <string name="lock_subtitle">今天的观看时间已用完，先去休息一下吧</string>
+    <string name="unlock_toast">已临时解锁 %1$d 分钟</string>
+    <string name="countdown_format">距离可继续观看还有 %1$s（%2$s）</string>
+    <string name="countdown_unknown">请等待家长解锁</string>
+    <string name="hint_unlock">家长解锁：按遥控器解锁序列，可临时解锁 %1$d 分钟</string>
+    <string name="admin_explain">激活后可防止被卸载，并允许到点直接锁屏</string>
+</resources>

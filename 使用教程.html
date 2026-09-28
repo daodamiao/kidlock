@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KidLock 儿童限时管控 App · 使用教程</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1f2328; --muted: #57606a;
+    --line: #e2e6ea; --brand: #1a6feb; --brand-soft: #eaf2ff;
+    --warn-bg: #fff8e6; --warn-line: #f0d590; --ok: #1a7f37;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.75;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.hero {
+    background: linear-gradient(135deg, #1a3f8f 0%, #1a6feb 100%);
+    color: #fff; border-radius: 14px; padding: 30px 32px; margin-bottom: 28px;
+  }
+  header.hero h1 { margin: 0 0 8px; font-size: 26px; }
+  header.hero p { margin: 0; opacity: .92; }
+  h2 {
+    font-size: 20px; margin: 34px 0 12px; padding-left: 12px;
+    border-left: 4px solid var(--brand);
+  }
+  h3 { font-size: 16px; margin: 22px 0 8px; }
+  p, li { color: var(--ink); }
+  .muted { color: var(--muted); font-size: 13px; }
+  table {
+    width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    margin: 10px 0 18px; font-size: 14px;
+  }
+  th, td { padding: 9px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { background: var(--brand-soft); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  code, kbd {
+    background: #eef1f4; border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 7px; font-family: Consolas, "Courier New", monospace; font-size: 13px;
+  }
+  kbd { background: #2d333b; color: #fff; border-color: #2d333b; padding: 2px 9px; }
+  pre {
+    background: #1f2430; color: #dbe4f3; border-radius: 10px;
+    padding: 14px 18px; overflow-x: auto; font-size: 13.5px; line-height: 1.65;
+  }
+  pre code { background: none; border: none; color: inherit; padding: 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px 22px; margin: 12px 0;
+  }
+  .warn {
+    background: var(--warn-bg); border: 1px solid var(--warn-line);
+    border-radius: 10px; padding: 12px 16px; margin: 12px 0;
+  }
+  .ok { color: var(--ok); font-weight: 600; }
+  .step { display: flex; gap: 14px; margin: 14px 0; }
+  .step .num {
+    flex: 0 0 30px; height: 30px; border-radius: 50%; background: var(--brand);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; margin-top: 3px;
+  }
+  .step .body { flex: 1; }
+  .tag {
+    display: inline-block; background: var(--brand-soft); color: var(--brand);
+    border-radius: 6px; padding: 1px 9px; font-size: 12.5px; margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>🔓 KidLock 儿童限时管控 App · 使用教程</h1>
+  <p>适用于 Android 7.1.2（API 25）Amlogic arm64-v8a 电视盒子 · v1.0.0</p>
+</header>
+
+<h2>一、安装与首次部署</h2>
+
+<div class="step"><div class="num">1</div><div class="body">
+  <strong>安装 APK</strong>（盒子开启 ADB 调试后，在电脑上执行）：
+<pre><code>adb install -r app-release.apk</code></pre>
+  <span class="muted">也可把 APK 放进 U 盘，用盒子自带文件管理器安装。</span>
+</div></div>
+
+<div class="step"><div class="num">2</div><div class="body">
+  <strong>授予“使用情况访问”权限</strong>（用于检测当前前台应用并强制停止）：
+<pre><code>adb shell appops set com.kidlock.app GET_USAGE_STATS allow</code></pre>
+</div></div>
+
+<div class="step"><div class="num">3</div><div class="body">
+  <strong>激活设备管理员</strong>（防止儿童卸载 App）：
+<pre><code>adb shell dpm set-active-admin com.kidlock.app/.KidDeviceAdmin</code></pre>
+  <span class="muted">也可在 App 内点击「激活设备管理员」按钮，在盒子弹窗中确认。</span>
+</div></div>
+
+<div class="step"><div class="num">4</div><div class="body">
+  <strong>（可选）升级为设备所有者</strong>（防卸载强度最高，需在<b>未登录任何账号的全新系统</b>上执行）：
+<pre><code>adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin</code></pre>
+</div></div>
+
+<div class="warn">⚠️ <strong>执行顺序很重要：</strong>先做第 3 步防卸载，再交给儿童使用。卸载 App 前必须先在系统设置中停用设备管理员。</div>
+
+<h2>二、时间规则怎么算（核心概念）</h2>
+
+<table>
+  <tr><th style="width:130px">模式</th><th>含义</th><th>典型用途</th></tr>
+  <tr>
+    <td><span class="tag">开放模式 OPEN</span></td>
+    <td>时间段<b>内</b>可以正常使用，时间段<b>外</b>自动锁屏</td>
+    <td>每天只允许看 18:00–20:00</td>
+  </tr>
+  <tr>
+    <td><span class="tag">禁止模式 BLOCK</span></td>
+    <td>时间段<b>内</b>强制锁屏，其余时间正常使用</td>
+    <td>禁止 22:00–次日 7:00 偷偷看电视</td>
+  </tr>
+</table>
+
+<ul>
+  <li><strong>多时段</strong>：可添加任意多条时间段，任意一条命中即生效。</li>
+  <li><strong>按周重复</strong>：每条时间段可勾选周一～周日中的任意几天（如仅周末开放）。</li>
+  <li><strong>跨午夜</strong>：开始时间大于结束时间即视为跨天（如 22:00 → 07:00），自动正确处理到第二天的结束时间。</li>
+  <li><strong>开始 = 结束</strong>：表示“全天”覆盖。</li>
+  <li>规则完全依赖本机时钟，<b>断网照常生效</b>；修改系统时间会触发规则立即重新评估。</li>
+</ul>
+
+<h2>三、通过网页配置（推荐方式）</h2>
+
+<div class="step"><div class="num">1</div><div class="body">
+  在<b>同一局域网</b>的电脑或手机浏览器中访问：
+<pre><code>http://&lt;盒子IP&gt;:6666</code></pre>
+  <span class="muted">盒子 IP 可在盒子「设置 → 网络」中查看，或在 App 主界面的“服务地址”处直接显示。</span>
+</div></div>
+
+<div class="step"><div class="num">2</div><div class="body">
+  <strong>页面会自动加载当前配置，无需输入密码。</strong>
+  只有<b>保存配置</b>或<b>执行操作</b>（临时解锁/立即锁定等）时，才需要在页面底部「当前密码」里填写管理密码（<strong>默认 <code>123456</code></strong>）。
+  安全起见，页面不回显现有密码——「管理密码」栏<b>留空即表示不修改</b>。
+</div></div>
+
+<h3>配置页各区域说明</h3>
+
+<table>
+  <tr><th style="width:150px">区域</th><th>操作说明</th></tr>
+  <tr><td>状态面板</td><td>实时显示：当前是否锁定、下一状态切换时间、服务运行状态、访问地址。</td></tr>
+  <tr><td>管控模式</td><td>选择「开放模式」或「禁止模式」。</td></tr>
+  <tr><td>时间段列表</td><td>每条可设置开始/结束时间（±5 分钟、±1 小时步进微调）与生效星期；可增删多条。</td></tr>
+  <tr><td>解锁按键序列</td><td>点击「开始绘制」区的虚拟按键依次录入（<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><kbd>OK</kbd>、返回/菜单/空格、数字键）；录入结果实时显示在上方，点 <code>✕</code> 可删除某一步。默认为 <kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd>。<b>锁屏页面不会显示序列</b>，请家长自行牢记。</td></tr>
+  <tr><td>一次性解锁时长</td><td>按键解锁后保持可用的分钟数，默认 30 分钟（范围 1–1440）。</td></tr>
+  <tr><td>管理密码 / 端口</td><td>「管理密码」留空表示不修改；填新值并保存即生效。改端口后需用新端口重新访问。</td></tr>
+  <tr><td>操作按钮</td><td>「保存并立即生效」需密码；「立即锁定/一次性解锁/清除解锁/重启 Web 服务/立即备份配置」同样需密码。</td></tr>
+</table>
+
+<div class="card">
+  <strong>一次性解锁的特殊规则（防钻空子设计）：</strong><br>
+  解锁时长会自动取 <code>min(设置的分钟数, 距离下一个允许时段的分钟数)</code>。
+  例如允许时段 18:00–20:00，在 19:45 解锁 30 分钟 → 实际只解锁到 20:00；
+  20:00 一到立即重新锁屏，不可能借“解锁”混进下一个允许时段。
+</div>
+
+<h2>四、锁屏期间的操作</h2>
+
+<table>
+  <tr><th style="width:200px">动作</th><th>效果</th></tr>
+  <tr><td>锁屏画面出现</td><td>全屏覆盖、无法切后台；遥控器所有按键（方向/OK/返回/菜单/数字/电源等）均被拦截。</td></tr>
+  <tr><td>输入解锁序列</td><td>在锁屏画面上用遥控器按出完整序列（默认 ↑↑↓↓←←→→）。<b>锁屏页不显示序列、也不显示输入进度</b>，防止孩子观察模仿；两次按键间隔超过 3 秒自动重置；连续重复开头（如 ↑↑↑↓…）也能正确匹配。</td></tr>
+  <tr><td>序列正确</td><td>立即解锁，进入“一次性解锁”倒计时；时间到自动重新锁屏。</td></tr>
+  <tr><td>到达解除时间</td><td>无需任何操作，自动解锁并恢复正常使用。</td></tr>
+</table>
+
+<h2>五、稳定性机制</h2>
+
+<ul>
+  <li><strong>开机自启</strong>：监听开机完成、App 更新、时间变化等广播，启动后台监控服务。</li>
+  <li><strong>常驻保活</strong>：前台服务 + 每分钟心跳闹钟 + 服务被杀自动重启，重启后立即按规则补锁。</li>
+  <li><strong>强停当前应用</strong>：先暂停媒体播放，再以锁屏 Activity 抢占前台，随后清理后台视频进程，杜绝“只锁不退”。</li>
+  <li><strong>防卸载</strong>：设备管理员激活后，普通方式无法卸载；需先在系统设置停用管理员。</li>
+</ul>
+
+<h2>六、升级与配置不丢失（重要）</h2>
+
+<div class="card">
+  <strong>结论：正常覆盖安装 / 升级 App，开放时间段、密码、端口等所有设置都会保留。</strong>
+  <table>
+    <tr><th style="width:220px">操作方式</th><th>配置是否保留</th></tr>
+    <tr><td><code>adb install -r 新.apk</code>（覆盖安装）</td><td class="ok">✅ 保留</td></tr>
+    <tr><td>盒子文件管理器直接安装新版 APK</td><td class="ok">✅ 保留</td></tr>
+    <tr><td>先卸载再重新安装</td><td>⚠️ 内部配置清空，但会从备份文件自动恢复</td></tr>
+    <tr><td>执行 <code>pm clear</code>（重置配置）</td><td>⚠️ 内部配置清空，但备份文件仍在，会自动恢复</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <strong>双保险存储机制：</strong>
+  <ol>
+    <li><b>内部存储</b>（SharedPreferences）：App 升级、覆盖安装均保留。</li>
+    <li><b>外部备份文件</b>：每次保存配置都会自动写入
+      <code>/sdcard/KidLock/kidlock_config.json</code>（若无存储权限则退回应用专属目录）。
+      App 启动时若发现内部配置为空，会自动从该文件恢复——<b>卸载重装也能找回设置</b>。</li>
+  </ol>
+  查看备份状态：App 主界面「配置备份」一行，或 Web 控制台的「配置备份」字段；也可点击
+  「立即备份配置」手动写一次。
+</div>
+
+<div class="warn">
+  ⚠️ <strong>如何彻底恢复出厂设置</strong>：需同时做两件事——
+  ① 执行 <code>adb shell pm clear com.kidlock.app</code>；
+  ② 删除备份文件 <code>/sdcard/KidLock/kidlock_config.json</code>（含 App 专属目录下的同名文件）。
+  只做第一步的话，下次启动会自动恢复旧配置（这是为了防止误清除，属于设计行为）。
+</div>
+
+<h2>七、进阶：命令行 API（可选）</h2>
+
+<p>适合脚本/自动化场景，密码通过 <code>pwd</code> 参数传递：</p>
+
+<pre><code># 查看状态（无需密码）
+curl http://&lt;盒子IP&gt;:6666/api/status
+
+# 读取配置（打开页面/接口均无需密码；返回结果中密码字段为空）
+curl "http://&lt;盒子IP&gt;:6666/api/config"
+
+# 保存配置（body 为完整配置 JSON，必须含正确的 pwd 字段；password 留空=不修改密码）
+curl -X POST http://&lt;盒子IP&gt;:6666/api/config -d '{"pwd":"123456", ...}'
+
+# 执行动作：unlock / lock / clearUnlock / restartWeb
+curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
+     -d '{"pwd":"123456","action":"lock"}'</code></pre>
+
+<h2>八、常见问题（FAQ）</h2>
+
+<table>
+  <tr><th style="width:280px">问题</th><th>解决方法</th></tr>
+  <tr><td>网页打不开</td><td>确认手机/电脑与盒子在同一局域网；确认端口未被改动；在 App 主界面确认 Web 服务已运行；必要时点「重启 Web 服务」。</td></tr>
+  <tr><td>到点没有锁屏</td><td>确认服务在运行（App 主界面状态卡）；确认已授予「使用情况访问」权限（第 2 步）；确认时段的星期勾选包含今天。</td></tr>
+  <tr><td>忘记管理密码</td><td>可在盒子端 App「设置 → 管理密码 → 修改」中用虚拟键盘重设；若 App 也不可用，用 ADB 清除数据：<code>adb shell pm clear com.kidlock.app</code>（配置恢复默认，需重新设置）。</td></tr>
+  <tr><td>忘记解锁序列</td><td>通过网页配置页重新录制新序列；或用网页上的「一次性解锁」按钮。</td></tr>
+  <tr><td>想卸载 App</td><td>先到 系统设置 → 设备管理器/设备管理员 → 停用 KidLock，再常规卸载。</td></tr>
+  <tr><td>改了系统时间</td><td>App 会收到时间变化广播并立即重新评估规则，无需重启。</td></tr>
+</table>
+
+<h2>九、默认值速查</h2>
+
+<table>
+  <tr><th style="width:220px">项目</th><th>默认值</th></tr>
+  <tr><td>管理密码</td><td><code>123456</code></td></tr>
+  <tr><td>Web 端口</td><td><code>6666</code>（旧版 8080 会自动迁移）</td></tr>
+  <tr><td>管控模式</td><td>开放模式（OPEN）</td></tr>
+  <tr><td>默认时间段</td><td>18:00 – 20:00，每天生效</td></tr>
+  <tr><td>解锁序列</td><td><kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd></td></tr>
+  <tr><td>一次性解锁时长</td><td>30 分钟</td></tr>
+  <tr><td>按键间隔重置</td><td>3 秒</td></tr>
+</table>
+
+<p class="muted" style="margin-top:30px">KidLock v1.0.0 · Flutter 3.47.5 + Kotlin · targetSdk 25 / minSdk 24 · arm64-v8a</p>
+</div>
+</body>
+</html>

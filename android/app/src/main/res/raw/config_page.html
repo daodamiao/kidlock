@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>儿童限时管控 · 配置</title>
+<style>
+  :root { --bg:#0f1319; --card:#181d26; --line:#2a3240; --text:#e9eef5; --dim:#93a1b5; --acc:#4da3ff; --ok:#37c26b; --warn:#ff7a5a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+         font-size:15px; line-height:1.6; }
+  .wrap { max-width: 900px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:22px; margin:8px 0 4px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .card h3 { margin:0 0 10px; font-size:16px; }
+  label { display:inline-flex; align-items:center; gap:6px; margin-right:14px; }
+  input[type=text], input[type=number], input[type=time], input[type=password], select {
+      background:#0f141c; color:var(--text); border:1px solid var(--line);
+      border-radius:8px; padding:7px 9px; font-size:14px; }
+  input[type=number] { width:100px; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:8px 14px;
+           font-size:14px; cursor:pointer; }
+  button.ghost { background:#263041; }
+  button.danger { background:#c9523f; }
+  .row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:10px 0; }
+  .seg { border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px; }
+  .days { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .day { font-size:13px; color:var(--dim); }
+  .keys { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .key { background:#263041; border-radius:6px; padding:4px 10px; font-size:13px; }
+  .key .x { color:var(--warn); cursor:pointer; margin-left:6px; }
+  .pad { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; max-width:520px; }
+  .pad button { width:56px; height:48px; font-size:18px; background:#263041; border:1px solid var(--line); }
+  .pad button.wide { width:auto; padding:0 16px; font-size:14px; }
+  .pad button:active { background:var(--acc); }
+  .status { font-size:14px; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:13px; }
+  .on { background:rgba(255,90,80,.18); color:#ff8a76; }
+  .off { background:rgba(55,194,107,.18); color:#5fd79a; }
+  #msg { margin-top:10px; font-size:13px; color:var(--dim); min-height:20px; }
+  .hint { color:var(--dim); font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:3px 0; }
+  td:first-child { color:var(--dim); width:130px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>儿童限时管控</h1>
+  <div class="sub">同一局域网的电脑 / 手机即可配置，保存后立即生效（盒子端 App 与锁屏不受网络影响）</div>
+
+  <div class="card">
+    <h3>当前状态</h3>
+    <div class="status" id="status">读取中…</div>
+  </div>
+
+  <div class="card">
+    <h3>基本设置</h3>
+    <div class="row">
+      <label><input type="checkbox" id="enabled"> 启用管控</label>
+      <label>模式
+        <select id="mode">
+          <option value="OPEN">开放时间段（时段内可看，时段外锁定）</option>
+          <option value="BLOCK">禁用时间段（仅时段内锁定）</option>
+        </select>
+      </label>
+    </div>
+    <div class="hint">跨零点：把结束时间填得比开始时间小即可（例如 22:00 → 01:00）。</div>
+  </div>
+
+  <div class="card">
+    <h3>时间段（支持多段 + 按星期重复）</h3>
+    <div id="segments"></div>
+    <button class="ghost" id="addSeg">+ 添加时间段</button>
+  </div>
+
+  <div class="card">
+    <h3>遥控器单次解锁</h3>
+    <div class="hint" style="margin-bottom:6px">录入结果（点击 ✕ 可删除某一步，需在锁屏页按同样顺序按出）：</div>
+    <div class="keys" id="keys"></div>
+    <div class="hint" style="margin:10px 0 4px">点击下方虚拟按键依次录入：</div>
+    <div class="pad" id="pad"></div>
+    <div class="row">
+      <button class="ghost" id="clearKey">清空</button>
+      <button class="ghost" id="delLast">删最后一步</button>
+      <button class="ghost" id="presetKey">恢复默认（上上下下左左右右）</button>
+    </div>
+    <div class="row">
+      <label>单次解锁时长（分钟）<input type="number" id="singleUnlockMinutes" min="1" max="1440"></label>
+    </div>
+    <div class="hint">单次解锁只在本段锁定内有效，到下一个禁用时间点会自动重新锁定；锁屏页不会显示序列，请家长自行牢记。</div>
+  </div>
+
+  <div class="card">
+    <h3>安全与服务</h3>
+    <div class="row">
+      <label>管理密码<input type="text" id="password" placeholder="留空表示不修改"></label>
+      <label>Web 端口<input type="number" id="port" min="1024" max="65535"></label>
+    </div>
+    <div class="hint">配置已自动加载。安全起见，打开页面时不显示现有密码，留空保存即保持原密码不变。</div>
+    <div class="row">
+      <label><input type="checkbox" id="forceStop"> 到点强制停止前台应用</label>
+      <label><input type="checkbox" id="lockNow"> 到点同时黑屏锁屏（需设备管理器）</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>保存与操作</h3>
+    <div class="row">
+      <label>当前密码<input type="password" id="pwd" placeholder="默认 123456（保存/操作时必填）"></label>
+    </div>
+    <div class="row">
+      <button id="save">保存并立即生效</button>
+      <button class="ghost" id="unlock">立即临时解锁</button>
+      <button class="danger" id="lock">立即锁定</button>
+      <button class="ghost" id="clearUnlock">清除临时解锁</button>
+      <button class="ghost" id="restartWeb">重启 Web 服务</button>
+      <button class="ghost" id="backupNow">立即备份配置</button>
+    </div>
+    <div id="msg"></div>
+    <div class="hint" style="margin-top:8px">
+      打开页面已自动读取当前配置，无需密码；<b>只有保存配置、执行操作时才校验「当前密码」</b>。<br>
+      若要修改管理密码：在「安全与服务」里的“管理密码”填写新值并保存（<b>留空表示不修改</b>）。
+    </div>
+  </div>
+</div>
+
+<script>
+var $ = function(id){ return document.getElementById(id); };
+var cfg = null;
+
+var KEY_NAMES = {
+  19:'↑ 上', 20:'↓ 下', 21:'← 左', 22:'→ 右', 23:'OK 确认',
+  4:'返回', 82:'菜单', 62:'空格',
+  7:'0', 8:'1', 9:'2', 10:'3', 11:'4',
+  12:'5', 13:'6', 14:'7', 15:'8', 16:'9'
+};
+
+function pad(v){ return v < 10 ? '0' + v : '' + v; }
+function toTime(min){ return pad(Math.floor(min/60)) + ':' + pad(min%60); }
+function toMin(str){ var p = (str||'0:0').split(':'); return (parseInt(p[0],10)||0)*60 + (parseInt(p[1],10)||0); }
+function fmt(ts){
+  if(!ts || ts > 1e17) return '--';
+  var d = new Date(ts);
+  return pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function api(url, opts){
+  return fetch(url, opts).then(function(r){ return r.text(); }).then(function(t){
+    try { return JSON.parse(t); } catch(e){ return {ok:false, error:t}; }
+  });
+}
+
+function loadStatus(){
+  api('/api/status').then(function(s){
+    if(!s.ok){ $('status').textContent = '状态读取失败'; return; }
+    var locked = s.locked;
+    var urls = (s.ips || []).map(function(ip){ return 'http://' + ip + ':' + s.port; }).join('  ');
+    $('status').innerHTML =
+      '<span class="badge ' + (locked?'on':'off') + '">' + (locked?'已锁定':'未锁定') + '</span> &nbsp;' +
+      '模式：' + (s.mode === 'BLOCK' ? '禁用时间段' : '开放时间段') + '（' + (s.enabled?'已启用':'已停用') + '）<br>' +
+      '<table>' +
+      '<tr><td>盒子时间</td><td>' + fmt(s.now) + '</td></tr>' +
+      '<tr><td>生效时间段</td><td>' + (s.segmentsText || '--') + '</td></tr>' +
+      '<tr><td>临时解锁到</td><td>' + (s.unlockUntil ? fmt(s.unlockUntil) : '无') + '</td></tr>' +
+      '<tr><td>下次状态变化</td><td>' + (s.nextTransitionText || fmt(s.nextTransition)) + '</td></tr>' +
+      '<tr><td>锁屏是否在显示</td><td>' + (s.lockVisible ? '是' : '否') + '</td></tr>' +
+      '<tr><td>当前前台应用</td><td>' + (s.foreground || '未知') + '</td></tr>' +
+      '<tr><td>守护服务</td><td>' + (s.serviceRunning ? '运行中' : '未运行') + '</td></tr>' +
+      '<tr><td>Web 服务</td><td>' + (s.webRunning ? '运行中' : '未运行') + '</td></tr>' +
+      '<tr><td>前台识别授权</td><td>' + (s.usageAccess ? '已授权（可精确杀进程）' : '未授权（降级处理）') + '</td></tr>' +
+      '<tr><td>设备管理器</td><td>' + (s.deviceAdmin ? '已激活' : '未激活') + '</td></tr>' +
+      '<tr><td>配置备份</td><td>' + (s.backup ? s.backup : '未写入（可在下方点击「立即备份配置」）') + '</td></tr>' +
+      '<tr><td>访问地址</td><td>' + (urls || '--') + '</td></tr>' +
+      '</table>';
+  });
+}
+
+function renderSegments(){
+  var box = $('segments');
+  box.innerHTML = '';
+  (cfg.segments || []).forEach(function(s, i){
+    var div = document.createElement('div');
+    div.className = 'seg';
+    var names = ['日','一','二','三','四','五','六'];
+    var days = '';
+    for (var d = 0; d < 7; d++){
+      days += '<label class="day"><input type="checkbox" data-i="' + i + '" data-d="' + d + '"' +
+              (s.days[d] ? ' checked' : '') + '> 周' + names[d] + '</label>';
+    }
+    div.innerHTML =
+      '<div class="row">开始 <input type="time" data-i="' + i + '" data-k="start" value="' + toTime(s.start) + '">' +
+      '&nbsp;&nbsp;结束 <input type="time" data-i="' + i + '" data-k="end" value="' + toTime(s.end) + '">' +
+      '&nbsp;<button class="danger" data-del="' + i + '">删除</button></div>' +
+      '<div class="days">' + days + '</div>';
+    box.appendChild(div);
+  });
+  box.querySelectorAll('input[type=time]').forEach(function(el){
+    el.onchange = function(){
+      cfg.segments[+el.dataset.i][el.dataset.k] = toMin(el.value);
+    };
+  });
+  box.querySelectorAll('input[type=checkbox]').forEach(function(el){
+    el.onchange = function(){
+      cfg.segments[+el.dataset.i].days[+el.dataset.d] = el.checked;
+    };
+  });
+  box.querySelectorAll('button[data-del]').forEach(function(el){
+    el.onclick = function(){
+      cfg.segments.splice(+el.dataset.del, 1);
+      renderSegments();
+    };
+  });
+}
+
+function renderKeys(){
+  var box = $('keys');
+  box.innerHTML = '';
+  (cfg.unlockKeys || []).forEach(function(k, i){
+    var s = document.createElement('span');
+    s.className = 'key';
+    s.innerHTML = (i + 1) + '. ' + (KEY_NAMES[k] || ('KeyCode ' + k)) + '<span class="x" data-i="' + i + '">✕</span>';
+    box.appendChild(s);
+  });
+  if (!(cfg.unlockKeys || []).length){
+    var e = document.createElement('span');
+    e.className = 'key';
+    e.style.color = '#93a1b5';
+    e.textContent = '（尚未录入，请点击下方虚拟按键）';
+    box.appendChild(e);
+  }
+  box.querySelectorAll('.x').forEach(function(el){
+    el.onclick = function(){
+      cfg.unlockKeys.splice(+el.dataset.i, 1);
+      renderKeys();
+    };
+  });
+}
+
+function renderPad(){
+  var pad = $('pad');
+  pad.innerHTML = '';
+  var buttons = [
+    [19, '↑'], [20, '↓'], [21, '←'], [22, '→'], [23, 'OK'],
+    [4, '返回'], [82, '菜单'], [62, '空格'],
+    [7,'0'],[8,'1'],[9,'2'],[10,'3'],[11,'4'],[12,'5'],[13,'6'],[14,'7'],[15,'8'],[16,'9']
+  ];
+  buttons.forEach(function(b){
+    var btn = document.createElement('button');
+    btn.textContent = b[1];
+    btn.title = KEY_NAMES[b[0]] || ('KeyCode ' + b[0]);
+    btn.onclick = function(){
+      cfg.unlockKeys.push(b[0]);
+      renderKeys();
+    };
+    pad.appendChild(btn);
+  });
+}
+
+function collect(){
+  cfg.enabled = $('enabled').checked;
+  cfg.mode = $('mode').value;
+  cfg.singleUnlockMinutes = parseInt($('singleUnlockMinutes').value, 10) || 30;
+  cfg.password = $('password').value;
+  cfg.port = parseInt($('port').value, 10) || 6666;
+  cfg.forceStop = $('forceStop').checked;
+  cfg.lockNow = $('lockNow').checked;
+  return cfg;
+}
+
+function fill(c){
+  cfg = c;
+  $('enabled').checked = !!c.enabled;
+  $('mode').value = c.mode;
+  $('singleUnlockMinutes').value = c.singleUnlockMinutes;
+  $('password').value = c.password;
+  $('port').value = c.port;
+  $('forceStop').checked = !!c.forceStop;
+  $('lockNow').checked = !!c.lockNow;
+  renderSegments();
+  renderKeys();
+}
+
+function msg(text, warn){
+  $('msg').textContent = text;
+  $('msg').style.color = warn ? '#ff8a76' : '#93a1b5';
+}
+
+function loadConfig(){
+  // 打开页面即自动读取，无需密码（密码仅用于写入校验）
+  api('/api/config').then(function(r){
+    if(!r.ok){ msg('配置读取失败：' + (r.error || '未知错误'), true); return; }
+    fill(r.config);
+    msg('配置已自动加载' + (r.config && r.config.password === '' ? '（密码已隐藏，留空保存即不修改）' : ''));
+  });
+}
+
+function save(){
+  var pwd = $('pwd').value;
+  if(!pwd){ msg('保存需要验证密码：请填写「当前密码」', true); return; }
+  var payload = collect();
+  payload.pwd = pwd;
+  api('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function(r){
+    if(!r.ok){ msg('保存失败：' + (r.error || '未知错误'), true); return; }
+    fill(r.config);
+    msg('已保存并生效' + (r.config && r.config.password === '' ? '（管理密码未修改）' : '，管理密码已更新'));
+    loadStatus();
+  });
+}
+
+function action(a){
+  var pwd = $('pwd').value;
+  if(!pwd){ msg('请先填写当前管理密码', true); return; }
+  api('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pwd: pwd, action: a })
+  }).then(function(r){
+    if(!r.ok){ msg('操作失败：' + (r.error || '未知错误'), true); return; }
+    msg('操作成功');
+    loadStatus();
+  });
+}
+
+(function init(){
+  $('addSeg').onclick = function(){
+    cfg.segments.push({ start: 18*60, end: 20*60, days: [1,1,1,1,1,1,1] });
+    renderSegments();
+  };
+  $('clearKey').onclick = function(){ cfg.unlockKeys = []; renderKeys(); };
+  $('delLast').onclick = function(){ cfg.unlockKeys.pop(); renderKeys(); };
+  $('presetKey').onclick = function(){ cfg.unlockKeys = [19,19,20,20,21,21,22,22]; renderKeys(); };
+  $('save').onclick = save;
+  $('unlock').onclick = function(){ action('unlock'); };
+  $('lock').onclick = function(){ action('lock'); };
+  $('clearUnlock').onclick = function(){ action('clearUnlock'); };
+  $('restartWeb').onclick = function(){ action('restartWeb'); };
+  $('backupNow').onclick = function(){ action('backup'); };
+
+  cfg = { enabled:true, mode:'OPEN', segments:[], unlockKeys:[19,19,20,20,21,21,22,22],
+          singleUnlockMinutes:30, password:'', port:6666, forceStop:true, lockNow:false };
+  renderSegments();
+  renderKeys();
+  renderPad();
+  loadConfig();          // 打开页面自动读取配置，无需密码
+  loadStatus();
+  setInterval(loadStatus, 10000);
+})();
+</script>
+</body>
+</html>
