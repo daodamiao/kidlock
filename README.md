@@ -180,7 +180,7 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 ```
 
 ### 配置（局域网 Web）
-1. 打开盒子上的「儿童限时管控」（需先输入家长解锁序列），屏幕显示 `http://192.168.x.x:6666`；
+1. 打开盒子上的「儿童限时管控」（需先输入家长解锁序列），屏幕显示 `http://192.168.x.x:9090`；
 2. 同一 WiFi 下的电脑 / 手机浏览器打开该地址；
 3. 页面**自动读取**当前配置（无需密码）；修改后填入「当前密码」（默认 **`123456`**）→ 「保存并立即生效」；
 4. 解锁序列默认**隐藏**：点「显示序列」并输入当前密码后才可见/可编辑，用虚拟按键点击录入；
@@ -192,7 +192,7 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 - 模式：开放时间段（18:00–20:00，全星期）
 - 解锁序列 1（遥控器）：上 上 下 下 左 左 右 右
 - 解锁序列 2（手机音量键）：音量+ 音量+ 音量- 音量-
-- 单次解锁：30 分钟；端口：6666；密码：123456
+- 单次解锁：30 分钟；端口：9090；密码：123456
 - 配置双保险：内部 SharedPreferences（升级/覆盖安装保留）+ 外部备份 `/sdcard/KidLock/kidlock_config.json`（卸载重装自动恢复）
 
 ---
@@ -217,7 +217,7 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
   "unlockKeys2": [24,24,25,25],
   "singleUnlockMinutes": 30,
   "password": "123456",
-  "port": 6666,
+  "port": 9090,
   "forceStop": true,
   "lockNow": false
 }

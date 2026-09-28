@@ -129,9 +129,10 @@
     <h3>安全与服务</h3>
     <div class="row">
       <label>管理密码<input type="text" id="password" placeholder="留空表示不修改"></label>
-      <label>Web 端口<input type="number" id="port" min="1024" max="65535"></label>
+      <label>Web 端口<input type="number" id="port" min="1024" max="65535" placeholder="默认 9090"></label>
     </div>
-    <div class="hint">配置已自动加载。安全起见，打开页面时不显示现有密码，留空保存即保持原密码不变。</div>
+    <div class="hint">配置已自动加载。安全起见，打开页面时不显示现有密码，留空保存即保持原密码不变。<br>
+      端口不能用 <b>6666</b>（Chrome 等浏览器会按“不安全端口”直接拒绝连接），也不建议 8080（常与盒子系统服务冲突），默认已改为 <b>9090</b>；改端口后需用新端口重新访问。</div>
     <div class="row">
       <label><input type="checkbox" id="forceStop"> 到点强制停止前台应用</label>
       <label><input type="checkbox" id="lockNow"> 到点同时黑屏锁屏（需设备管理器）</label>
@@ -331,7 +332,7 @@ function collect(){
     mode: $('mode').value,
     singleUnlockMinutes: parseInt($('singleUnlockMinutes').value, 10) || 30,
     password: $('password').value,
-    port: parseInt($('port').value, 10) || 6666,
+    port: parseInt($('port').value, 10) || 9090,
     forceStop: $('forceStop').checked,
     lockNow: $('lockNow').checked,
     segments: cfg.segments
@@ -489,7 +490,7 @@ function action(a){
 
   cfg = { enabled:true, mode:'OPEN', segments:[],
           unlockKeys:[], unlockKeys2:[], keyCount1:0, keyCount2:0,
-          singleUnlockMinutes:30, password:'', port:6666, forceStop:true, lockNow:false };
+          singleUnlockMinutes:30, password:'', port:9090, forceStop:true, lockNow:false };
   renderSegments();
   renderKeys();
   renderPad();

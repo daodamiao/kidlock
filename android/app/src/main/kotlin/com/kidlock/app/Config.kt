@@ -84,8 +84,8 @@ class LockConfig {
     var singleUnlockMinutes: Int = 30
     /** 管理密码（Web 控制台鉴权） */
     var password: String = "123456"
-    /** 内嵌 Web 服务端口 */
-    var port: Int = 6666
+    /** 内嵌 Web 服务端口。默认 9090：6666 会被 Chrome 等浏览器列为不安全端口直接拒绝连接 */
+    var port: Int = 9090
     /** 到点时强制停止前台应用 */
     var forceStop: Boolean = true
     /** 到点时同时调用 DevicePolicyManager.lockNow()（需已激活设备管理器） */
@@ -132,7 +132,7 @@ class LockConfig {
     /** 修正非法输入，保证规则引擎拿到的永远是合法配置 */
     fun normalize(): LockConfig {
         if (mode != MODE_BLOCK) mode = MODE_OPEN
-        if (port < 1024 || port > 65535) port = 6666
+        if (port < 1024 || port > 65535 || port == 6666) port = 9090
         if (singleUnlockMinutes < 1) singleUnlockMinutes = 1
         if (singleUnlockMinutes > 1440) singleUnlockMinutes = 1440
         if (password.isEmpty()) password = "123456"

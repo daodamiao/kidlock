@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 set PKG=com.kidlock.app
-set PORT=6666
+set PORT=9090
 
 echo ============================================================
 echo  KidLock 诊断脚本（需先用 USB / ADB 网络连接盒子）

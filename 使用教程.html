@@ -140,7 +140,7 @@
 
 <div class="step"><div class="num">1</div><div class="body">
   在<b>同一局域网</b>的电脑或手机浏览器中访问：
-<pre><code>http://&lt;盒子IP&gt;:6666</code></pre>
+<pre><code>http://&lt;盒子IP&gt;:9090</code></pre>
   <span class="muted">盒子 IP 可在盒子「设置 → 网络」中查看，或在 App 主界面的“服务地址”处直接显示。</span>
 </div></div>
 
@@ -240,21 +240,21 @@
 <p>适合脚本/自动化场景，密码通过 <code>pwd</code> 参数传递：</p>
 
 <pre><code># 查看状态（无需密码）
-curl http://&lt;盒子IP&gt;:6666/api/status
+curl http://&lt;盒子IP&gt;:9090/api/status
 
 # 读取配置（打开页面/接口均无需密码；密码与两组解锁序列都不下发，只返回步数 keyCount1/keyCount2）
-curl "http://&lt;盒子IP&gt;:6666/api/config"
+curl "http://&lt;盒子IP&gt;:9090/api/config"
 
 # 保存配置（body 为完整配置 JSON，必须含正确的 pwd 字段；password 留空=不修改密码；
 #          不传 unlockKeys / unlockKeys2 = 保持原序列不变）
-curl -X POST http://&lt;盒子IP&gt;:6666/api/config -d '{"pwd":"123456", ...}'
+curl -X POST http://&lt;盒子IP&gt;:9090/api/config -d '{"pwd":"123456", ...}'
 
 # 执行动作：unlock / lock / clearUnlock / restartWeb / backup / eval
-curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
+curl -X POST http://&lt;盒子IP&gt;:9090/api/action \
      -d '{"pwd":"123456","action":"lock"}'
 
 # 查看真实解锁序列（需密码，返回 unlockKeys / unlockKeys2）
-curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
+curl -X POST http://&lt;盒子IP&gt;:9090/api/action \
      -d '{"pwd":"123456","action":"showKeys"}'</code></pre>
 
 <h2>九、常见问题（FAQ）</h2>
@@ -276,7 +276,7 @@ curl -X POST http://&lt;盒子IP&gt;:6666/api/action \
 <table>
   <tr><th style="width:220px">项目</th><th>默认值</th></tr>
   <tr><td>管理密码</td><td><code>123456</code></td></tr>
-  <tr><td>Web 端口</td><td><code>6666</code>（旧版 8080 会自动迁移）</td></tr>
+  <tr><td>Web 端口</td><td><code>9090</code>（旧版 8080 / 6666 会自动迁移；6666 会被 Chrome 等浏览器按“不安全端口”拒绝连接）</td></tr>
   <tr><td>管控模式</td><td>开放模式（OPEN）</td></tr>
   <tr><td>默认时间段</td><td>18:00 – 20:00，每天生效</td></tr>
   <tr><td>解锁序列 1（遥控器）</td><td><kbd>↑</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>←</kbd><kbd>→</kbd><kbd>→</kbd></td></tr>

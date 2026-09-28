@@ -18,7 +18,7 @@ class _SettingsPageState extends State<SettingsPage> {
   LockConfig? _cfg;
   bool _saving = false;
   String _error = '';
-  int _port = 6666;
+  int _port = 9090;
   final TextEditingController _pwdController = TextEditingController();
 
   @override

@@ -110,9 +110,10 @@ object ConfigStore {
                 Log.e(TAG, "load config failed, use default", t)
                 return LockConfig.defaultConfig()
             }
-            // 迁移：8080 为旧默认端口，容易与盒子系统服务冲突（返回 Not Found），统一切到 6666
-            if (cfg.port == 8080) {
-                cfg.port = 6666
+            // 迁移：8080 / 6666 均为旧默认端口（8080 与盒子系统服务冲突返回 Not Found；
+            // 6666 会被 Chrome 等浏览器列为不安全端口直接拒绝连接），统一切到 9090
+            if (cfg.port == 8080 || cfg.port == 6666) {
+                cfg.port = 9090
                 save(c, cfg)
             } else if (backupPath(c) == null) {
                 // 老版本升级上来、还没有外部备份时，补写一份
