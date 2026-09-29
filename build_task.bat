@@ -15,11 +15,11 @@ if errorlevel 1 (
 )
 
 if not exist "dist" mkdir "dist"
-copy /y "build\app\outputs\flutter-apk\app-release.apk" "dist\app-release-v1.3.1.apk" >nul
+copy /y "build\app\outputs\flutter-apk\app-release.apk" "dist\app-release-v1.4.0.apk" >nul
 if errorlevel 1 (
   echo Copy failed.
   exit /b 1
 )
 
-echo Release APK ready at dist\app-release-v1.3.1.apk
+echo Release APK ready at dist\app-release-v1.4.0.apk
 exit /b 0

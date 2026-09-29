@@ -23,10 +23,14 @@ import java.util.Collections
 /**
  * 常驻管控服务（前台服务 + START_STICKY）：
  *  1. 10s 轮询规则；同时在下一个翻转点注册精确闹钟（双保险）
- *  2. 到点：暂停媒体 -> 弹全屏锁屏抢占前台 -> 杀掉原前台应用进程
+ *  2. 到点：静音（媒体键 + 暂停广播 + 音频焦点抢占）-> 弹全屏锁屏抢占前台
+ *     -> 等目标应用退到后台后杀进程，2.5 秒后再补一刀
  *  3. 未到点：若锁屏仍在显示则关闭
  *  4. 内嵌 Web 配置服务随服务一起存活
  *  5. 心跳闹钟 + onDestroy/onTaskRemoved 自拉活
+ *
+ *  说明：IPTV / 直播类应用常以前台服务常驻，且不响应媒体暂停键，
+ *  因此“杀掉进程”不可靠，最终兜底是持续静音（muteAudio）。
  */
 class MonitorService : Service() {
 
@@ -36,6 +40,12 @@ class MonitorService : Service() {
     private var lastKill = 0L
     private var lastWebAttempt = 0L
     private var started = false
+
+    /** 是否正处于“锁屏静音”状态，用于解锁后恢复音量 */
+    private var wasQuiet = false
+
+    /** 静音前的音乐流音量，解锁后恢复 */
+    private var savedMusicVolume = -1
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -123,6 +133,11 @@ class MonitorService : Service() {
         if (locked) {
             enforceLock(now, cfg)
         } else {
+            // 解锁 / 进入开放时段：解除静音，并把音量恢复到原本的水平
+            if (wasQuiet) {
+                wasQuiet = false
+                restoreVolume()
+            }
             LockScreenActivity.requestFinish()
         }
 
@@ -130,23 +145,118 @@ class MonitorService : Service() {
         ensureWeb(cfg, now)
     }
 
+    /**
+     * 执行锁定。到点“强制停止当前播放”的完整流程（IPTV / 直播类应用不会响应媒体暂停键，
+     * 所以采用「静音兜底 + 多轮杀进程」策略，任一轮命中即可）：
+     *   1. 记下当前前台应用（此时它还在前台，杀不掉，必须先记下来）
+     *   2. 发媒体暂停键 + 各类播放器暂停广播
+     *   3. 弹锁屏抢占前台（锁屏自身还会请求 AUDIOFOCUS_GAIN，逼播放器让出音频焦点）
+     *   4. 0.8s 后杀目标进程（此时它已退到后台，killBackgroundProcesses 才有效）
+     *   5. 1.2s / 2.5s 再各静音 / 补刀一次，覆盖响应慢的播放器
+     * 兜底：即使进程始终没被回收，音乐流也被静音，听不到声音。
+     */
     private fun enforceLock(now: Long, cfg: LockConfig) {
         if (!LockScreenActivity.isVisible()) {
             if (now - lastShowAttempt >= SHOW_RETRY_MS) {
                 lastShowAttempt = now
-                if (cfg.forceStop) hardStopForegroundApp()
+                // 先记下当前前台应用，再弹锁屏：只有等它退到后台，杀进程才有效
+                val target = if (cfg.forceStop) ForegroundHelper.getForegroundPackage(this) else null
+                if (cfg.forceStop) pauseMedia()
                 showLock()
+                // 弹锁屏会重新抢占音频焦点，因此静音与杀进程都放到锁屏起来之后
+                if (cfg.forceStop) {
+                    handler.postDelayed({ muteAudio() }, QUIET_DELAY_MS)
+                    handler.postDelayed({ killIfNeeded(target) }, KILL_DELAY_MS)
+                    handler.postDelayed({ hardStopAgain() }, KILL_RETRY_MS)
+                }
                 if (cfg.lockNow) lockScreenNow()
             }
-        } else if (cfg.forceStop && now - lastKill >= KILL_INTERVAL_MS) {
-            // 看门狗：锁屏已显示，但仍有别的应用抢到前台（被通知 / 定时器拉起）
+        } else if (now - lastKill >= KILL_INTERVAL_MS && cfg.forceStop) {
+            // 看门狗：锁屏已显示，但仍有别的应用抢到前台（被通知 / 定时器拉起 / 常驻服务）
             lastKill = now
             val p = ForegroundHelper.getForegroundPackage(this)
-            if (p != null && p != packageName && p != "android" && p != "com.android.systemui") {
-                killPackage(p)
+            if (p != null && isThirdParty(p)) {
+                muteAudio()
+                handler.postDelayed({ killPackage(p) }, KILL_DELAY_MS)
+            } else {
+                // 没有第三方前台：仍可能残留后台播放（IPTV 常以前台服务常驻），每轮补一次静音
+                muteAudio()
             }
         }
     }
+
+    /**
+     * 杀掉指定应用（若它已退到后台）。
+     * 传入 null 或目标已失效时，改为杀「当前前台」的第三方应用。
+     * 若此刻目标仍是前台，说明还没降级，杀不掉是预期结果 —— 由静音兜底。
+     */
+    private fun killIfNeeded(target: String?) {
+        try {
+            if (!TimeRule.isLocked(
+                    ConfigStore.load(this), System.currentTimeMillis(),
+                    ConfigStore.getUnlockUntil(this), ConfigStore.getManualLock(this)
+                )
+            ) {
+                return
+            }
+        } catch (t: Throwable) {
+            // 状态判断失败也继续，锁屏自会按规则退出
+        }
+        var victim = target
+        if (!isThirdParty(victim)) {
+            // 目标不可用（未取到 / 是系统应用 / 是自己）：退而杀当前前台
+            victim = ForegroundHelper.getForegroundPackage(this)
+        }
+        val v = victim
+        if (v != null && isThirdParty(v)) {
+            killPackage(v)
+        }
+        muteAudio()
+    }
+
+    /** 第一轮没停住时的追加补刀：再静音一次并重杀一次后台进程 */
+    private fun hardStopAgain() {
+        killIfNeeded(null)
+    }
+
+    private fun isThirdParty(pkg: String?): Boolean =
+        pkg != null && pkg != packageName && pkg != "android" && pkg != "com.android.systemui"
+
+    private fun pauseMedia() {
+        // 1) 走 AudioManager 媒体键（用反射，避免不同固件上 API 差异导致崩溃）
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            val t = SystemClock.uptimeMillis()
+            val down = KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE, 0)
+            val up = KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE, 0)
+            val m = am.javaClass.getMethod("dispatchMediaKeyEvent", KeyEvent::class.java)
+            m.invoke(am, down)
+            m.invoke(am, up)
+        } catch (t: Throwable) {
+            Log.w(TAG, "media key pause failed", t)
+        }
+        // 2) 兼容常见播放器（含 MX / VLC 等 IPTV 常用播放器）的暂停广播
+        for (action in PAUSE_BROADCASTS) {
+            try {
+                val i = Intent(action)
+                i.putExtra("command", "pause")
+                sendBroadcast(i)
+            } catch (t: Throwable) {
+                Log.w(TAG, "pause broadcast $action failed", t)
+            }
+        }
+    }
+
+    private fun killPackage(pkg: String) {
+        try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            am?.killBackgroundProcesses(pkg)
+            Log.i(TAG, "killed $pkg")
+        } catch (t: Throwable) {
+            Log.w(TAG, "kill failed", t)
+        }
+    }
+
 
     private fun showLock() {
         try {
@@ -164,44 +274,80 @@ class MonitorService : Service() {
         }
     }
 
-    /** 到点“强制停止当前播放”：先发暂停键，再把（已退到后台的）应用进程杀掉 */
-    private fun hardStopForegroundApp() {
-        pauseMedia()
-        val pkg = ForegroundHelper.getForegroundPackage(this)
-        if (pkg == null || pkg == packageName || pkg == "android") return
-        handler.postDelayed({ killPackage(pkg) }, 300L)
-    }
-
-    private fun pauseMedia() {
-        // 1) 走 AudioManager 媒体键（用反射，避免不同固件上 API 差异导致崩溃）
+    /**
+     * 请求音频焦点并立刻放弃：系统会把焦点转给下一位（通常是锁屏自身），
+     * 正在播放的 IPTV / 直播应用会收到 AUDIOFOCUS_LOSS 从而暂停或降低音量。
+     * 这是对媒体键不响应类播放器最有效的一招。
+     */
+    private fun muteAudio() {
         try {
             val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-            val t = SystemClock.uptimeMillis()
-            val down = KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE, 0)
-            val up = KeyEvent(t, t, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE, 0)
-            val m = am.javaClass.getMethod("dispatchMediaKeyEvent", KeyEvent::class.java)
-            m.invoke(am, down)
-            m.invoke(am, up)
+            // 首次静音时记住原始音量，解锁后还原
+            if (!wasQuiet) {
+                val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                if (cur > 0) savedMusicVolume = cur
+            }
+            wasQuiet = true
+            for (attempt in 0 until 2) {
+                val res = am.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+                )
+                if (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    am.abandonAudioFocus(null)
+                }
+            }
         } catch (t: Throwable) {
-            Log.w(TAG, "media key pause failed", t)
+            Log.w(TAG, "muteAudio failed", t)
         }
-        // 2) 兼容常见播放器的通用暂停广播（无需权限）
+        // 部分机型的隐藏音量接口：直接静音音乐流（失败不影响其他手段）
         try {
-            val i = Intent("com.android.music.musicservicecommand")
-            i.putExtra("command", "pause")
-            sendBroadcast(i)
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            val cls = am.javaClass
+            val m = cls.getMethod(
+                "setStreamMute",
+                Int::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType
+            )
+            m.invoke(am, AudioManager.STREAM_MUSIC, true)
         } catch (t: Throwable) {
-            Log.w(TAG, "pause broadcast failed", t)
+            // 隐藏 API 在部分固件不可用，属预期情况，不记录噪音日志。
+            // 退而求其次：直接把音乐流音量设为 0（需要勿扰权限，失败也无害）
+            try {
+                val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+            } catch (t2: Throwable) {
+                // ignore
+            }
         }
     }
 
-    private fun killPackage(pkg: String) {
+    /** 解锁 / 开放时段恢复：取消静音并还原音量 */
+    private fun restoreVolume() {
         try {
-            val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-            am?.killBackgroundProcesses(pkg)
-            Log.i(TAG, "killed $pkg")
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            try {
+                val m = am.javaClass.getMethod(
+                    "setStreamMute",
+                    Int::class.javaPrimitiveType,
+                    Boolean::class.javaPrimitiveType
+                )
+                m.invoke(am, AudioManager.STREAM_MUSIC, false)
+            } catch (t: Throwable) {
+                // ignore：部分固件无此接口
+            }
+            if (savedMusicVolume > 0) {
+                try {
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVolume, 0)
+                } catch (t: Throwable) {
+                    // ignore
+                }
+            }
         } catch (t: Throwable) {
-            Log.w(TAG, "kill failed", t)
+            Log.w(TAG, "restoreVolume failed", t)
+        } finally {
+            savedMusicVolume = -1
         }
     }
 
@@ -289,6 +435,24 @@ class MonitorService : Service() {
         private const val HEARTBEAT_MS = 10L * 60L * 1000L
         private const val SHOW_RETRY_MS = 3000L
         private const val KILL_INTERVAL_MS = 20000L
+
+        /** 弹锁屏后等待应用退到后台的时间，再执行杀进程（前台进程杀不掉，必须先降级） */
+        private const val KILL_DELAY_MS = 800L
+
+        /** 第一轮补刀时间：留足时间让播放器响应暂停键 / 音频焦点变化 */
+        private const val KILL_RETRY_MS = 2500L
+
+        /** 弹锁屏后再次静音的时间点 */
+        private const val QUIET_DELAY_MS = 1200L
+
+        /** 各类播放器通用的暂停广播（IPTV / 本地播放器都有人用） */
+        private val PAUSE_BROADCASTS = arrayOf(
+            "com.android.music.musicservicecommand",
+            "com.mxtech.videoplayer.ad.musicservicecommand",
+            "com.mxtech.videoplayer.pro.musicservicecommand",
+            "org.videolan.vlc.musicservicecommand",
+            "com.android.music.metachanged"
+        )
 
         @Volatile
         private var lastInstance: MonitorService? = null

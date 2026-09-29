@@ -104,14 +104,29 @@ adb shell appops set com.kidlock.app GET_USAGE_STATS allow     # 推荐
 
 ## 五、功能实现要点
 
-### 1. 定时锁定（强制停止播放 + 全屏锁屏）
-到点时 `MonitorService` 依次执行：
-1. `AudioManager` 媒体暂停键（反射）+ 通用暂停广播 → 先暂停播放；
-2. 启动 `LockScreenActivity` **抢占前台**（原播放 App 退到后台并 onPause）；
-3. 延迟 300ms 后 `ActivityManager.killBackgroundProcesses(pkg)` → 彻底停掉进程；
-4. 可选：`DevicePolicyManager.lockNow()` 直接黑屏（需已激活设备管理器）。
+### 1. 定时锁定（静音兜底 + 多轮杀进程 + 全屏锁屏）
 
-> 这样无需 `FORCE_STOP_PACKAGES`（系统签名权限）也能达到“强制停止”效果。
+到点时 `MonitorService.enforceLock()` 依次执行：
+
+1. **先记下当前前台应用**（此刻它还在前台，`killBackgroundProcesses` 对前台进程无效，必须先记下来）；
+2. `AudioManager` 媒体暂停键（反射 `dispatchMediaKeyEvent`）+ 常见播放器暂停广播（`com.android.music.musicservicecommand`、MX Player、VLC 等）→ 先尝试暂停；
+3. 启动 `LockScreenActivity` **抢占前台**（原播放 App 退到后台并 `onPause`）；锁屏页自身持有 `AUDIOFOCUS_GAIN`，逼正在播放的应用让出音频焦点；
+4. 延迟 0.8s 等目标退到后台后 `ActivityManager.killBackgroundProcesses(target)` → 彻底停掉进程；
+5. 延迟 1.2s / 2.5s 再**各静音 + 补刀一次**，覆盖响应慢的播放器；
+6. 可选：`DevicePolicyManager.lockNow()` 直接黑屏（需已激活设备管理器）。
+
+**兜底静音**（针对 IPTV / 直播类应用）：
+
+部分直播应用（IPTV、电视直播）走**视频轨**而非 MediaSession，媒体暂停键打不到，且常以前台服务常驻，`killBackgroundProcesses` 也可能一直不生效。因此增加了独立于杀进程的静音链路：
+
+- **音频焦点抢占**：反复申请 `AUDIOFOCUS_GAIN_TRANSIENT` 后立即放弃，系统会把焦点转给下一位，正在播放的应用收到 `AUDIOFOCUS_LOSS` 从而暂停或降低音量；
+- **音乐流静音**：反射调用隐藏 API `setStreamMute(STREAM_MUSIC, true)`；固件不支持时降级为 `setStreamVolume(STREAM_MUSIC, 0, 0)`；
+- **锁屏页常驻焦点**：`LockScreenActivity` 在 `onCreate` 请求 `AUDIOFOCUS_GAIN`、`onDestroy` 释放，锁屏期间持续压制背景音频。
+
+> 这样即使进程始终没被系统回收，**也听不到声音**；解锁 / 进入开放时段后 `restoreVolume()` 自动取消静音并还原原本音量。
+
+> 全程无需 `FORCE_STOP_PACKAGES`（系统签名权限）也能达到“强制停止播放”效果。
+
 
 ### 2. 屏蔽遥控器
 - `LockScreenActivity.dispatchKeyEvent()` **对所有按键返回 true**（方向键 / 确认 / 返回 / 数字 / 音量全部吞掉），`onBackPressed()` 空实现。

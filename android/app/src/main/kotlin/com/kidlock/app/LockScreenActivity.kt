@@ -1,7 +1,9 @@
 package com.kidlock.app
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +22,7 @@ import android.widget.Toast
  * 全屏锁屏页（原生 Activity，启动最快、最省内存）：
  *  - 沉浸式全屏、常亮、可越过键盘锁显示
  *  - dispatchKeyEvent 吞掉遥控器所有按键（方向键 / 确认 / 返回 / 数字 / 音量）
+ *  - 持有音频焦点（AUDIOFOCUS_GAIN），强制让 IPTV 等正在播放的应用静音
  *  - 命中配置的按键序列 -> 单次解锁
  */
 class LockScreenActivity : Activity() {
@@ -29,6 +32,11 @@ class LockScreenActivity : Activity() {
     private lateinit var tvClock: TextView
     private lateinit var tvCountdown: TextView
     private lateinit var tvHint: TextView
+
+    /** 音频焦点变化监听（本页只抢占、不播放，收到丢失也只记录） */
+    private val afChangeListener = AudioManager.OnAudioFocusChangeListener { change ->
+        Log.i(TAG, "audio focus change: $change")
+    }
 
     private val refresher = object : Runnable {
         override fun run() {
@@ -55,6 +63,8 @@ class LockScreenActivity : Activity() {
         )
         hideSystemUi()
         setContentView(buildUi())
+        // 锁屏自身抢占音频焦点：IPTV / 直播应用收到 AUDIOFOCUS_LOSS 会停止播放或静音
+        grabAudioFocus()
 
         val cfg = ConfigStore.load(this)
         matcher.setSequences(
@@ -71,6 +81,36 @@ class LockScreenActivity : Activity() {
             )
         ) {
             finish()
+        }
+    }
+
+    /**
+     * 请求常驻音频焦点（AUDIOFOCUS_GAIN）。
+     * 对不响应媒体暂停键的播放器（多数 IPTV / 直播应用）来说，
+     * 这是让系统主动掐掉它声音的最可靠手段。
+     * 必须在 onDestroy 释放，否则解锁后其他应用声音会异常。
+     */
+    private fun grabAudioFocus() {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            am.requestAudioFocus(
+                afChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "grabAudioFocus failed", t)
+        }
+    }
+
+    private fun releaseAudioFocus() {
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            am.abandonAudioFocus(afChangeListener)
+            // 兜底：部分固件对同一 listener 重复注册不敏感，这里再整体放弃一次
+            am.abandonAudioFocus(null)
+        } catch (t: Throwable) {
+            Log.w(TAG, "releaseAudioFocus failed", t)
         }
     }
 
@@ -153,6 +193,7 @@ class LockScreenActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacks(refresher)
+        releaseAudioFocus()
         if (instance === this) instance = null
         super.onDestroy()
     }
