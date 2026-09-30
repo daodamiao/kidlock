@@ -124,7 +124,8 @@ class _HomePageState extends State<HomePage> {
           _infoRow('临时解锁至', s.unlockUntil > 0 ? s.unlockUntilText : '无'),
           _infoRow('下次状态变化', s.nextTransitionText),
           _infoRow('锁屏显示中', s.lockVisible ? '是' : '否'),
-          _infoRow('当前前台应用', s.foreground.isEmpty ? '未知' : s.foreground),
+          // 锁屏期间显示「锁屏前的应用」——它只是被暂停在后台，界面并未切换
+          _infoRow(s.foregroundPreLock ? '锁屏前应用' : '当前前台应用', s.foregroundText),
           _infoRow('访问地址', s.urls.isEmpty ? '未获取到局域网 IP' : s.urls),
           _infoRow('配置备份', s.backupPath.isEmpty ? '未写入（点上方按钮或 Web 后台「立即备份配置」）' : s.backupPath),
           const SizedBox(height: 10),
@@ -149,8 +150,15 @@ class _HomePageState extends State<HomePage> {
           await _refresh();
         }),
         _btn('立即锁定', const Color(0xFFC9523F), () => _run('立即锁定', Bridge.lockNow)),
-        _btn('临时解锁 ${s.singleUnlockMinutes} 分钟', const Color(0xFF37C26B), () => _run('临时解锁', Bridge.unlockOnce)),
-        _btn('清除临时解锁', const Color(0xFF263041), () => _run('清除解锁', Bridge.clearUnlock)),
+        // 合并为一个按钮：未解锁显示「立即临时解锁」，已解锁显示「清除临时解锁」
+        _btn(
+          s.tempUnlocked ? '清除临时解锁' : '立即临时解锁 ${s.singleUnlockMinutes} 分钟',
+          s.tempUnlocked ? const Color(0xFF263041) : const Color(0xFF37C26B),
+          () => _run(
+            s.tempUnlocked ? '清除临时解锁' : '临时解锁',
+            s.tempUnlocked ? Bridge.clearUnlock : Bridge.unlockOnce,
+          ),
+        ),
         _btn('重启 Web 服务', const Color(0xFF263041), () => _run('Web 服务', Bridge.restartWeb)),
         _btn('立即备份配置（更新/重装不丢设置）', const Color(0xFF263041), () async {
           try {

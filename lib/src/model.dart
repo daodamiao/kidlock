@@ -152,10 +152,16 @@ class KidStatus {
   final String nowText;
   final int unlockUntil;
   final String unlockUntilText;
+  /// 是否正处于「临时解锁」状态（用于切换 临时解锁 / 清除临时解锁 按钮）
+  final bool tempUnlocked;
   final bool manualLock;
   final String nextTransitionText;
   final bool lockVisible;
   final String foreground;
+  /// 前台应用的显示名（原生解析，失败时等于包名）
+  final String foregroundName;
+  /// true 表示 foreground 是「锁屏前的应用」（当前正处于锁屏中）
+  final bool foregroundPreLock;
   final bool usageAccess;
   final bool deviceAdmin;
   final bool serviceRunning;
@@ -173,10 +179,13 @@ class KidStatus {
     required this.nowText,
     required this.unlockUntil,
     required this.unlockUntilText,
+    required this.tempUnlocked,
     required this.manualLock,
     required this.nextTransitionText,
     required this.lockVisible,
     required this.foreground,
+    required this.foregroundName,
+    required this.foregroundPreLock,
     required this.usageAccess,
     required this.deviceAdmin,
     required this.serviceRunning,
@@ -195,10 +204,13 @@ class KidStatus {
         nowText: (m['nowText'] ?? '--').toString(),
         unlockUntil: _asInt(m['unlockUntil']),
         unlockUntilText: (m['unlockUntilText'] ?? '--').toString(),
+        tempUnlocked: m['tempUnlocked'] == true,
         manualLock: m['manualLock'] == true,
         nextTransitionText: (m['nextTransitionText'] ?? '--').toString(),
         lockVisible: m['lockVisible'] == true,
         foreground: (m['foreground'] ?? '').toString(),
+        foregroundName: (m['foregroundName'] ?? m['foreground'] ?? '').toString(),
+        foregroundPreLock: m['foregroundPreLock'] == true,
         usageAccess: m['usageAccess'] == true,
         deviceAdmin: m['deviceAdmin'] == true,
         serviceRunning: m['serviceRunning'] == true,
@@ -209,6 +221,13 @@ class KidStatus {
         segmentsText: (m['segmentsText'] ?? '--').toString(),
         backupPath: (m['backup'] ?? '').toString(),
       );
+
+  /// 「应用名 (包名)」，包名与显示名相同时只显示一次
+  String get foregroundText {
+    if (foregroundName.isEmpty) return foreground.isEmpty ? '未知' : foreground;
+    if (foreground.isEmpty || foregroundName == foreground) return foregroundName;
+    return '$foregroundName ($foreground)';
+  }
 
   String get urls => ips.map((ip) => 'http://$ip:$port').join('   ');
 }

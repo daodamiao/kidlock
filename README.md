@@ -52,11 +52,13 @@ KidLock/
     │   ├── KeySequenceMatcher.kt         # 多组解锁序列并行匹配（遥控器方向键 / 手机音量键）
     │   ├── ForegroundHelper.kt           # 前台应用识别（UsageStats + 降级）
     │   ├── ConfigStore.kt / Config.kt    # 配置模型 + SharedPreferences 持久化
-    │   ├── ConfigWebServer.kt            # 内嵌 HTTP 服务（配置页 + JSON API）
+    │   ├── ConfigWebServer.kt            # 内嵌 HTTP 服务（配置页 + JSON API + 截图接口）
+    │   ├── ScreenCapture.kt              # 屏幕截图（MediaProjection，免 root）
+    │   ├── CaptureActivity.kt            # 截屏授权页（无界面，弹系统授权框）
     │   ├── BootReceiver.kt               # 开机 / 升级 / 时间变更自启
     │   └── KidDeviceAdmin.kt             # 设备管理器（防卸载 + lockNow）
     └── res/
-        ├── raw/config_page.html          # Web 配置页面（单文件，内联 CSS/JS）
+        ├── raw/config_page.html          # Web 配置页面（单文件，内联 CSS/JS，含移动端适配）
         ├── xml/device_admin.xml
         ├── drawable-xxhdpi/ic_stat.png   # 通知小图标
         └── values/{strings,styles}.xml   # LaunchTheme / NormalTheme / LockTheme
@@ -91,6 +93,10 @@ KidLock/
 | `KILL_BACKGROUND_PROCESSES` | 否 | 到点停止正在播放的应用 |
 | `DISABLE_KEYGUARD` / `REORDER_TASKS` | 否 | 锁屏页覆盖显示、置前 |
 | `PACKAGE_USAGE_STATS` | **是（需手动授权）** | 精确识别前台应用；不授权自动降级为进程重要性推断，功能不失效 |
+| `READ/WRITE_EXTERNAL_STORAGE` | 是（Android 6+） | 把配置备份写到 `/sdcard/KidLock/`；拒绝则退回应用专属目录 |
+| `FOREGROUND_SERVICE` | 否 | 常驻守护服务 |
+
+> **屏幕截图不需要任何清单权限**：使用 `MediaProjection` API，由系统在首次使用时弹出授权对话框，用户手动确认后生效（`ScreenCapture.kt` + `CaptureActivity.kt`）。
 
 授权 `PACKAGE_USAGE_STATS`（三选一）：
 
@@ -108,7 +114,7 @@ adb shell appops set com.kidlock.app GET_USAGE_STATS allow     # 推荐
 
 到点时 `MonitorService.enforceLock()` 依次执行：
 
-1. **先记下当前前台应用**（此刻它还在前台，`killBackgroundProcesses` 对前台进程无效，必须先记下来）；
+1. **先记下当前前台应用**（此刻它还在前台，`killBackgroundProcesses` 对前台进程无效，必须先记下来），同时写入 `rememberForeground()` —— 锁屏期间 App / Web 的「前台应用」就显示这个**锁屏前的应用**（它只是被暂停在后台，解锁后回到的仍是它的画面）；
 2. `AudioManager` 媒体暂停键（反射 `dispatchMediaKeyEvent`）+ 常见播放器暂停广播（`com.android.music.musicservicecommand`、MX Player、VLC 等）→ 先尝试暂停；
 3. 启动 `LockScreenActivity` **抢占前台**（原播放 App 退到后台并 `onPause`）；锁屏页自身持有 `AUDIOFOCUS_GAIN`，逼正在播放的应用让出音频焦点；
 4. 延迟 0.8s 等目标退到后台后 `ActivityManager.killBackgroundProcesses(target)` → 彻底停掉进程；
@@ -153,12 +159,20 @@ adb shell appops set com.kidlock.app GET_USAGE_STATS allow     # 推荐
 ### 4. 两种时间模式 + 多段 + 星期 + 跨零点
 - `OPEN`：时段内可看、时段外锁定；`BLOCK`：仅时段内锁定。
 - 每段独立勾选星期；`start > end` 自动按跨零点处理，判定时同时回看“昨天生效且跨零点”的段（如周日 22:00→01:00，周一 00:30 仍命中）。
+- **时间段描述**由 `TimeRule.describeSegments()` 生成：相同星期的段先归为一组，连续星期压缩成「周一到周五」，零散项用「、」连接，跨零点标注「次日」，`start == end` 视为「全天」。该文案同时供 App 主界面与 Web 状态栏使用。
 
 ### 5. 稳定性 / 保活
 - **双通道定时**：10s 轮询 + 下一翻转点的精确闹钟（`RTC_WAKEUP`）。
 - **心跳 10 分钟** + `onDestroy` / `onTaskRemoved` 注册 2~3s 的一次性重启闹钟 + `START_STICKY`。
 - **断网 / 重启不受影响**：规则只依赖本地 SharedPreferences 与系统时间，Web 服务只是配置入口。
 - 所有系统调用均 try-catch，单点异常不会让服务崩溃。
+
+### 6. Web 控制台（移动端适配 + 免密截图）
+- **移动端适配**：`config_page.html` 内置 `@media (max-width: 640px)` 断点 —— 控件纵向铺满、输入框 16px（避免 iOS 聚焦缩放）、按钮 ≥44px、虚拟按键 4 列网格、状态表收窄标签列。
+- **权限模型**：`GET` 类接口免密（配置、状态、截图）；写操作经密码弹窗（`askPassword()`）校验后提交，密码只缓存在内存用于弹窗预填。
+- **序列查看**：隐藏态渲染「查看」按钮，验证密码后经 `POST /api/action {action:"showKeys"}` 拉取真实序列，按钮转为「隐藏」；未点过「查看」时保存不会提交序列，服务端保持原值。
+- **临时解锁按钮**：`status.tempUnlocked` 驱动文案在「立即临时解锁 / 清除临时解锁」之间切换，对应 `unlock` / `clearUnlock` 两个 action。
+- **截图**：`ScreenCapture`（`MediaProjection` + `VirtualDisplay` + `ImageReader`）抓一帧编码为 JPEG；未授权时 `GET /api/screen` 会拉起 `CaptureActivity` 弹系统授权框并返回 `needConsent`，前端每 2s 轮询等待。授权期间 `isConsentUiActive()` 让守护服务暂缓抢占前台，避免授权框被锁屏页顶掉。
 
 ---
 
@@ -197,9 +211,11 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 ### 配置（局域网 Web）
 1. 打开盒子上的「儿童限时管控」（需先输入家长解锁序列），屏幕显示 `http://192.168.x.x:9090`；
 2. 同一 WiFi 下的电脑 / 手机浏览器打开该地址；
-3. 页面**自动读取**当前配置（无需密码）；修改后填入「当前密码」（默认 **`123456`**）→ 「保存并立即生效」；
-4. 解锁序列默认**隐藏**：点「显示序列」并输入当前密码后才可见/可编辑，用虚拟按键点击录入；
-5. 建议第一时间改掉管理密码。
+3. 页面**自动读取**当前配置（无需密码）；点「保存并立即生效」时**弹出密码验证框**，输入当前管理密码（默认 **`123456`**）即可；
+4. 解锁序列默认**隐藏**：每组显示位置是一个「查看」按钮，点击→输入密码→显示序列，按钮随即变成「隐藏」，可随时再隐藏回去；显示后用虚拟按键点击录入；
+5. 界面已做**移动端适配**：宽度 ≤640px 时控件纵向铺满、按钮加大、虚拟按键改 4 列网格；
+6. 「当前画面」卡片可**查看盒子此刻的屏幕截图**（无需密码，首次需在电视上允许一次系统截屏授权）；
+7. 建议第一时间改掉管理密码。
 
 盒子端「设置」页也支持遥控器操作，但**解锁序列只做只读展示**，修改请走 Web 控制台。
 
@@ -217,9 +233,19 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/status` | 状态快照（无需密码） |
+| GET | `/api/screen` | 当前画面截图，成功返回 `image/jpeg`；未授权时拉起系统授权框并返回 `{ok:false, needConsent:true, error}` |
 | GET | `/api/config` | 读取配置（无需密码；`password` 与两组 `unlockKeys*` 均不下发，只返回步数 `keyCount1/keyCount2`） |
 | POST | `/api/config` | JSON（含 `pwd` 校验）保存并立即生效；`password` 留空表示不修改；未提交 `unlockKeys*` 则保持原序列不变 |
 | POST | `/api/action` | `{pwd, action}`，action ∈ `unlock` / `lock` / `clearUnlock` / `restartWeb` / `backup` / `eval` / `showKeys`（校验密码后返回两组真实序列） |
+
+`GET /api/status` 关键字段：
+
+| 字段 | 说明 |
+|---|---|
+| `segmentsText` | **按星期分组**的生效时间段描述（如 `周一到周五 18:00-20:00`、`周六到周日 全天`，多组以 `\n` 分隔） |
+| `foreground` / `foregroundName` | 前台应用包名 / 显示名；**锁屏期间为「锁屏前的应用」**（被暂停在后台那个） |
+| `foregroundPreLock` | `true` 表示当前 `foreground` 是锁屏前的应用 |
+| `tempUnlocked` | 是否处于临时解锁状态（前端据此切换「临时解锁 / 清除临时解锁」按钮文案） |
 
 配置 JSON 示例：
 
@@ -263,7 +289,10 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | 浏览器打不开 | 确认电脑 / 手机与盒子同网段；端口被占用可改成 8081 后保存 |
 | 到点没锁住 | 看 App 首页「守护中」徽标；`adb shell dumpsys activity services com.kidlock.app` |
 | 杀不掉播放器 | 授权 `GET_USAGE_STATS`；部分系统级播放器可改为开启「到点黑屏锁屏」 |
-| 按序列没解锁 | 需 3 秒内按完；确认 Web 控制台「显示序列」里的两组序列与实际按键一致（遥控器方向键 / 手机音量键都可） |
+| 按序列没解锁 | 需 3 秒内按完；确认 Web 控制台点「查看」（输入密码）后两组序列与实际按键一致（遥控器方向键 / 手机音量键都可） |
+| 手机上配置页排版乱 | 确认手机浏览器已加载新版页面（强制刷新清缓存）；v1.4.1 起 ≤640px 自动切换移动端样式 |
+| 截图提示「尚未获得截屏授权」 | 电视上会弹系统截屏授权框，用遥控器点「允许」；页面会自动轮询等待。授权被关掉就再点一次按钮 |
+| 保存时一直提示密码错误 | 弹窗里填的是**当前**管理密码；若刚在页面上改过密码，用新密码提交一次即可 |
 | 打开 App 就要求验证 | 正常：冷启动必须验证家长序列；离开超过 3 分钟再回来也会要求，避免孩子自己打开改配置 |
 | 卸载不了 | 先「设置 → 安全 → 设备管理器」取消激活，或 `adb shell dpm remove-active-admin com.kidlock.app/.KidDeviceAdmin` |
 | 遥控器在主界面不听使唤 | 用方向键 + 确认键导航；密码 / 端口输入框需要外接键盘，或改用 Web 配置 |

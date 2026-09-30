@@ -1,7 +1,7 @@
 name: kidlock
 description: "儿童限时管控 —— Android 7.1.2 TV 盒子（Amlogic arm64-v8a）"
 publish_to: 'none'
-version: 1.4.0+5
+version: 1.4.1+6
 
 environment:
   sdk: ^3.13.4

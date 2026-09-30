@@ -18,9 +18,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * 内嵌 Web 配置服务（纯 ServerSocket 实现，零第三方依赖）：
  *  GET  /                      -> 配置页面
  *  GET  /api/status            -> 当前状态（无需密码）
- *  GET  /api/config?pwd=xxx    -> 读取配置
+ *  GET  /api/screen            -> 当前画面截图（JPEG，无需密码；未授权时拉起系统授权框）
+ *  GET  /api/config            -> 读取配置（无需密码；序列不下发，只给步数）
  *  POST /api/config            -> 保存配置（body 为 JSON，含 pwd 字段）
- *  POST /api/action            -> {pwd, action}：unlock / lock / clearUnlock / restartWeb
+ *  POST /api/action            -> {pwd, action}：showKeys / unlock / lock / clearUnlock / restartWeb / backup
+ *
+ *  权限模型：读配置免密，写操作（保存 / 查看序列 / 立即锁定等）一律校验管理密码。
+ *  前端不再常驻「当前密码」输入框，改为每次写操作弹出密码验证框后提交。
  */
 class ConfigWebServer(private val appContext: Context) {
 
@@ -134,6 +138,7 @@ class ConfigWebServer(private val appContext: Context) {
 
         when {
             path == "/api/status" -> json(out, statusJson())
+            path == "/api/screen" -> handleScreen(out)
             path == "/api/config" && method == "GET" -> handleGetConfig(out, query)
             path == "/api/config" && method == "POST" -> handleSaveConfig(out, body)
             path == "/api/action" && method == "POST" -> handleAction(out, body)
@@ -149,7 +154,7 @@ class ConfigWebServer(private val appContext: Context) {
      * 读取配置：打开页面即自动调用，无需密码（便于展示与编辑）。
      * 出于安全考虑，返回结果中：
      *  · 管理密码置空
-     *  · 两组解锁序列一律为空（只返回步数），需点击「显示序列」并验证密码后才下发
+     *  · 两组解锁序列一律为空（只返回步数），需点击「查看」并验证密码后才下发
      */
     private fun handleGetConfig(out: OutputStream, query: Map<String, String>) {
         val cfg = ConfigStore.load(appContext)
@@ -160,6 +165,43 @@ class ConfigWebServer(private val appContext: Context) {
         safe.put("keyCount1", cfg.unlockKeys.size)
         safe.put("keyCount2", cfg.unlockKeys2.size)
         json(out, JSONObject().put("ok", true).put("config", safe))
+    }
+
+    /**
+     * 当前画面截图。按需求「免密码」，任何与盒子同网段的设备都能查看当前画面。
+     *  · 已授权 → 直接返回 image/jpeg
+     *  · 未授权 → 拉起电视端系统授权框，并返回 JSON 说明
+     */
+    private fun handleScreen(out: OutputStream) {
+        try {
+            if (!ScreenCapture.canCapture()) {
+                CaptureActivity.start(appContext)
+                json(
+                    out,
+                    JSONObject().put("ok", false)
+                        .put("needConsent", true)
+                        .put("error", "尚未获得截屏授权：已在电视上弹出授权窗口，请用遥控器点击「允许」后重试")
+                )
+                return
+            }
+            val jpg = ScreenCapture.capture(appContext)
+            if (jpg == null || jpg.isEmpty()) {
+                json(
+                    out,
+                    JSONObject().put("ok", false)
+                        .put("error", "截图失败：请确认已在电视上允许截屏授权，或稍后重试")
+                )
+                return
+            }
+            respond(out, 200, "image/jpeg", jpg)
+        } catch (t: Throwable) {
+            Log.e(TAG, "screen capture failed", t)
+            try {
+                json(out, JSONObject().put("ok", false).put("error", t.message ?: "截图异常"))
+            } catch (t2: Throwable) {
+                // ignore
+            }
+        }
     }
 
     private fun handleSaveConfig(out: OutputStream, body: ByteArray) {
@@ -177,7 +219,7 @@ class ConfigWebServer(private val appContext: Context) {
             if (o.optString("password", "").isEmpty()) {
                 next.password = cur.password
             }
-            // 未点击「显示序列」时页面不会提交序列 → 保持原有序列不变
+            // 未点击「查看」时页面不会提交序列 → 保持原有序列不变
             if (!o.has("unlockKeys")) {
                 next.unlockKeys = ArrayList(cur.unlockKeys)
             }
@@ -208,7 +250,7 @@ class ConfigWebServer(private val appContext: Context) {
                 return
             }
             val action = o.optString("action", "")
-            // 「显示序列」：需要密码，返回两组真实序列
+            // 「查看序列」：需要密码，返回两组真实序列
             if (action == "showKeys") {
                 val cfg = ConfigStore.load(appContext)
                 val k1 = org.json.JSONArray()

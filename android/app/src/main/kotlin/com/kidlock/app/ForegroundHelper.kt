@@ -54,6 +54,18 @@ object ForegroundHelper {
         return fallback(c)
     }
 
+    /** 包名 -> 应用显示名（失败时回退为包名本身，绝不抛异常） */
+    fun appLabel(c: Context, pkg: String?): String {
+        if (pkg.isNullOrEmpty()) return ""
+        return try {
+            val pm = c.packageManager
+            val ai = pm.getApplicationInfo(pkg, 0)
+            pm.getApplicationLabel(ai).toString()
+        } catch (t: Throwable) {
+            pkg
+        }
+    }
+
     private fun fallback(c: Context): String? {
         return try {
             val am = c.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return null

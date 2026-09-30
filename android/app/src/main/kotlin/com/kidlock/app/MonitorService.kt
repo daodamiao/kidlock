@@ -138,6 +138,9 @@ class MonitorService : Service() {
                 wasQuiet = false
                 restoreVolume()
             }
+            // 未锁定时持续记录当前前台应用，作为「锁屏前的应用」备选
+            val fg = ForegroundHelper.getForegroundPackage(this)
+            if (isThirdParty(fg)) rememberForeground(fg)
             LockScreenActivity.requestFinish()
         }
 
@@ -159,17 +162,24 @@ class MonitorService : Service() {
         if (!LockScreenActivity.isVisible()) {
             if (now - lastShowAttempt >= SHOW_RETRY_MS) {
                 lastShowAttempt = now
-                // 先记下当前前台应用，再弹锁屏：只有等它退到后台，杀进程才有效
-                val target = if (cfg.forceStop) ForegroundHelper.getForegroundPackage(this) else null
+                // 先记下当前前台应用（此刻它仍在最上层）：
+                //  · 记入 lastForeground —— 锁屏期间界面显示「锁屏前的应用」
+                //  · 作为杀进程目标 —— 只有等它退到后台，killBackgroundProcesses 才有效
+                val fg = ForegroundHelper.getForegroundPackage(this)
+                if (isThirdParty(fg)) rememberForeground(fg)
+                val target = if (cfg.forceStop) fg else null
                 if (cfg.forceStop) pauseMedia()
-                showLock()
-                // 弹锁屏会重新抢占音频焦点，因此静音与杀进程都放到锁屏起来之后
-                if (cfg.forceStop) {
-                    handler.postDelayed({ muteAudio() }, QUIET_DELAY_MS)
-                    handler.postDelayed({ killIfNeeded(target) }, KILL_DELAY_MS)
-                    handler.postDelayed({ hardStopAgain() }, KILL_RETRY_MS)
+                // 家长正在电视上处理「截屏授权」时，不要把系统授权框顶掉
+                if (!ScreenCapture.isConsentUiActive()) {
+                    showLock()
+                    // 弹锁屏会重新抢占音频焦点，因此静音与杀进程都放到锁屏起来之后
+                    if (cfg.forceStop) {
+                        handler.postDelayed({ muteAudio() }, QUIET_DELAY_MS)
+                        handler.postDelayed({ killIfNeeded(target) }, KILL_DELAY_MS)
+                        handler.postDelayed({ hardStopAgain() }, KILL_RETRY_MS)
+                    }
+                    if (cfg.lockNow) lockScreenNow()
                 }
-                if (cfg.lockNow) lockScreenNow()
             }
         } else if (now - lastKill >= KILL_INTERVAL_MS && cfg.forceStop) {
             // 看门狗：锁屏已显示，但仍有别的应用抢到前台（被通知 / 定时器拉起 / 常驻服务）
@@ -454,8 +464,15 @@ class MonitorService : Service() {
             "com.android.music.metachanged"
         )
 
+        /** 最近一次记录的前台应用（锁屏期间界面显示「锁屏前的应用」） */
         @Volatile
-        private var lastInstance: MonitorService? = null
+        private var lastForegroundPkg: String? = null
+
+        /** 记录前台应用，供 statusMap 在锁屏期间展示 */
+        @JvmStatic
+        fun rememberForeground(pkg: String?) {
+            if (!pkg.isNullOrEmpty()) lastForegroundPkg = pkg
+        }
 
         private fun evalPendingIntent(c: Context): PendingIntent {
             val i = Intent(c, MonitorService::class.java).setAction(ACTION_EVAL)
@@ -563,11 +580,26 @@ class MonitorService : Service() {
             m["nowText"] = TimeRule.stamp(now)
             m["unlockUntil"] = unlockUntil
             m["unlockUntilText"] = TimeRule.stamp(unlockUntil)
+            // 是否正处于「临时解锁」状态（前端据此切换「临时解锁 / 清除临时解锁」按钮文案）
+            m["tempUnlocked"] = unlockUntil > now
             m["manualLock"] = manual
             m["nextTransition"] = if (next == Long.MAX_VALUE) 0L else next
             m["nextTransitionText"] = TimeRule.stamp(next)
             m["lockVisible"] = LockScreenActivity.isVisible()
-            m["foreground"] = ForegroundHelper.getForegroundPackage(c) ?: ""
+            // 锁屏中展示「锁屏前的应用」：锁屏页在最上层，此时取实时前台只会拿到自己，
+            // 而真正该关心的是被暂停在后台的那个应用。
+            val fgNow = ForegroundHelper.getForegroundPackage(c)
+            val pre = lastForegroundPkg
+            val usePre = locked && !pre.isNullOrEmpty()
+            val fgShow = when {
+                usePre -> pre
+                !fgNow.isNullOrEmpty() && fgNow != c.packageName -> fgNow
+                !pre.isNullOrEmpty() -> pre
+                else -> fgNow ?: ""
+            }
+            m["foreground"] = fgShow
+            m["foregroundName"] = ForegroundHelper.appLabel(c, fgShow)
+            m["foregroundPreLock"] = usePre
             m["usageAccess"] = ForegroundHelper.hasUsageAccess(c)
             m["deviceAdmin"] = KidDeviceAdmin.isActive(c)
             m["serviceRunning"] = isRunning(c)
@@ -576,9 +608,8 @@ class MonitorService : Service() {
             m["ips"] = localIps()
             m["port"] = cfg.port
             m["singleUnlockMinutes"] = cfg.singleUnlockMinutes
-            m["segmentsText"] = cfg.segments.joinToString(" / ") {
-                "${TimeRule.hhmm(it.start)}-${TimeRule.hhmm(it.end)}"
-            }
+            // 生效时间段：按星期分组，同组内的多段时间用「、」连接，组间换行
+            m["segmentsText"] = TimeRule.describeSegments(cfg)
             return m
         }
 

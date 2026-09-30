@@ -100,6 +100,74 @@ object TimeRule {
         return Long.MAX_VALUE
     }
 
+    // ------------------------------------------------------------------ 人类可读描述
+
+    /** 周一到周日的显示顺序（下标对应 days 数组：0=周日 … 6=周六） */
+    private val WEEK_ORDER = intArrayOf(1, 2, 3, 4, 5, 6, 0)
+    private val DAY_NAMES = arrayOf("日", "一", "二", "三", "四", "五", "六")
+
+    /**
+     * 把全部时间段描述成「一眼看懂」的文字，相同星期的段自动合并成一组，组间换行。例：
+     *   每天 18:00-20:00
+     *   周一到周五 08:00-09:00、18:00-20:00
+     *   周六到周日 全天
+     *   周一、周三、周五 12:00-13:00
+     */
+    fun describeSegments(cfg: LockConfig): String {
+        if (cfg.segments.isEmpty()) return "未设置（不生效）"
+        // 按「星期组合」分组，LinkedHashMap 保持用户录入顺序
+        val groups = LinkedHashMap<String, MutableList<Segment>>()
+        for (s in cfg.segments) {
+            val key = (0..6).joinToString("") { if (s.days[it]) "1" else "0" }
+            groups.getOrPut(key) { ArrayList() }.add(s)
+        }
+        val lines = ArrayList<String>(groups.size)
+        for ((_, list) in groups) {
+            val times = list.joinToString("、") { timeText(it) }
+            lines.add("${daysText(list[0].days)} $times")
+        }
+        return lines.joinToString("\n")
+    }
+
+    /**
+     * 星期描述：连续区间用「周X到周Y」压缩，零散项用「、」连接。
+     * 例：每天 / 周一到周五 / 周六到周日 / 周一、周三、周五
+     */
+    fun daysText(days: BooleanArray): String {
+        val on = ArrayList<Int>(7)
+        for (d in WEEK_ORDER) if (days[d]) on.add(d)
+        if (on.isEmpty()) return "未选星期"
+        if (on.size == 7) return "每天"
+        val parts = ArrayList<String>()
+        var i = 0
+        while (i < on.size) {
+            var j = i
+            // 在「周一到周日」顺序中连续则并入同一区间
+            while (j + 1 < on.size &&
+                WEEK_ORDER.indexOf(on[j + 1]) == WEEK_ORDER.indexOf(on[j]) + 1
+            ) {
+                j++
+            }
+            if (j - i + 1 >= 2) {
+                parts.add("周${DAY_NAMES[on[i]]}到周${DAY_NAMES[on[j]]}")
+            } else {
+                parts.add("周${DAY_NAMES[on[i]]}")
+            }
+            i = j + 1
+        }
+        return parts.joinToString("、")
+    }
+
+    /** 单个时段描述：全天 / 18:00-20:00 / 22:00-次日01:00 */
+    fun timeText(s: Segment): String {
+        if (s.start == s.end) return "全天"
+        return if (s.start < s.end) {
+            "${hhmm(s.start)}-${hhmm(s.end)}"
+        } else {
+            "${hhmm(s.start)}-次日${hhmm(s.end)}"
+        }
+    }
+
     /** 分钟数 -> HH:mm */
     fun hhmm(minute: Int): String {
         var m = minute % 1440

@@ -167,7 +167,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     const Text(
                       '任一组序列命中即可解锁（锁屏页 / App 验证页 / 打开 App 时）。\n'
                       '这里只做展示；如需修改：请在同一局域网的电脑/手机浏览器打开 Web 控制台'
-                      '（地址见主界面"访问地址"），点击「显示序列」验证后，用虚拟按键点击录入。',
+                      '（地址见主界面"访问地址"），点击「查看」输入密码后，用虚拟按键点击录入。',
                       style: TextStyle(fontSize: 14, color: Color(0xFF93A1B5)),
                     ),
                   ],

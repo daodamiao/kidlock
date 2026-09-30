@@ -86,6 +86,14 @@
             android:taskAffinity="com.kidlock.app.lock"
             android:theme="@style/LockTheme" />
 
+        <!-- 屏幕截图授权页（无界面）：Web 端「查看当前画面」首次使用时弹出系统授权框 -->
+        <activity
+            android:name=".CaptureActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- 常驻管控服务 -->
         <service
             android:name=".MonitorService"

@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="format-detection" content="telephone=no">
 <title>儿童限时管控 · 配置</title>
 <style>
   :root { --bg:#0f1319; --card:#181d26; --line:#2a3240; --text:#e9eef5; --dim:#93a1b5; --acc:#4da3ff; --ok:#37c26b; --warn:#ff7a5a; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text);
          font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-         font-size:15px; line-height:1.6; }
+         font-size:15px; line-height:1.6; -webkit-text-size-adjust:100%; }
   .wrap { max-width: 900px; margin:0 auto; padding:20px 16px 60px; }
   h1 { font-size:22px; margin:8px 0 4px; }
   .sub { color:var(--dim); font-size:13px; margin-bottom:16px; }
@@ -24,11 +25,12 @@
            font-size:14px; cursor:pointer; }
   button.ghost { background:#263041; }
   button.danger { background:#c9523f; }
+  button.small { padding:6px 12px; font-size:13px; }
   .row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:10px 0; }
   .seg { border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px; }
   .days { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .day { font-size:13px; color:var(--dim); }
-  .keys { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .keys { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:8px 0; }
   .key { background:#263041; border-radius:6px; padding:4px 10px; font-size:13px; }
   .key .x { color:var(--warn); cursor:pointer; margin-left:6px; }
   .pad { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; max-width:520px; }
@@ -44,6 +46,44 @@
   table { width:100%; border-collapse:collapse; font-size:13px; }
   td { padding:3px 0; }
   td:first-child { color:var(--dim); width:130px; }
+
+  /* ---------- 密码验证弹窗 ---------- */
+  .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex;
+                align-items:center; justify-content:center; z-index:99; padding:16px; }
+  .modal { background:var(--card); border:1px solid var(--line); border-radius:14px;
+           padding:18px; width:100%; max-width:360px; }
+  .modal h3 { margin:0 0 12px; font-size:16px; }
+  .modal input[type=password] { width:100%; }
+  .modal-btns { display:flex; gap:10px; margin-top:12px; }
+  .modal-btns button { flex:1 1 0; width:auto; }
+
+  /* ---------- 手机端自适应（宽度 <= 640px） ---------- */
+  @media (max-width: 640px) {
+    .wrap { padding:14px 12px 48px; }
+    h1 { font-size:20px; }
+    .sub { font-size:12.5px; }
+    .card { padding:14px 12px; margin-bottom:12px; }
+    .card h3 { font-size:15.5px; }
+    /* 行内控件改为纵向铺满，避免小屏横向溢出 / 挤压 */
+    .row { flex-direction:column; align-items:stretch; gap:10px; }
+    .row > label { display:flex; flex-direction:column; align-items:stretch; gap:6px; margin-right:0; }
+    input[type=text], input[type=number], input[type=time],
+    input[type=password], select { width:100%; min-height:44px; font-size:16px; }
+    button { width:100%; min-height:44px; font-size:15px; }
+    button.small { width:auto; min-height:34px; }
+    /* 虚拟按键改为 4 列网格，手指点击更准 */
+    .pad { max-width:none; display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+    .pad button { width:100%; height:52px; font-size:17px; }
+    .seg { padding:12px 10px; }
+    .days { gap:4px; }
+    .day { font-size:12.5px; }
+    .key { font-size:12.5px; padding:4px 8px; }
+    table { font-size:12.5px; }
+    td { padding:3px 0; word-break:break-word; }
+    td:first-child { width:86px; }
+    .modal { max-width:100%; }
+    #msg, .hint { font-size:12.5px; }
+  }
 </style>
 </head>
 <body>
@@ -54,6 +94,21 @@
   <div class="card">
     <h3>当前状态</h3>
     <div class="status" id="status">读取中…</div>
+  </div>
+
+  <div class="card">
+    <h3>当前画面</h3>
+    <div class="row">
+      <button class="ghost" id="showShot">查看当前画面截图</button>
+      <button class="ghost small" id="refreshShot" style="display:none">刷新</button>
+    </div>
+    <div class="hint">无需密码。首次使用会在电视上弹出一次「截屏授权」，用遥控器点「允许」即可；此后可直接查看。</div>
+    <div id="shotMsg" class="hint" style="margin-top:8px"></div>
+    <div id="shotBox" style="display:none;margin-top:10px">
+      <img id="shotImg" alt="设备当前画面"
+           style="width:100%;border-radius:10px;border:1px solid var(--line);display:block">
+      <div class="hint" id="shotTime" style="margin-top:6px"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -80,7 +135,7 @@
     <h3>解锁序列（默认隐藏）</h3>
     <div class="hint" style="margin-bottom:6px">
       任意一组序列命中即可解锁。安全起见，打开页面时<b>不显示已配置的序列</b>，
-      点击「显示序列」并输入当前密码后才可见 / 可编辑。
+      点击「查看」并输入当前密码后才可见 / 可编辑。
     </div>
 
     <div class="seg">
@@ -100,8 +155,6 @@
     </div>
 
     <div class="row">
-      <button class="ghost" id="showKeys">显示序列（需当前密码）</button>
-      <button class="ghost" id="hideKeys">重新隐藏</button>
       <button class="ghost" id="presetKey">恢复默认（遥控器 ↑↑↓↓←←→→ / 手机 音量+音量+音量-音量-）</button>
     </div>
 
@@ -142,19 +195,16 @@
   <div class="card">
     <h3>保存与操作</h3>
     <div class="row">
-      <label>当前密码<input type="password" id="pwd" placeholder="默认 123456（保存/操作时必填）"></label>
-    </div>
-    <div class="row">
       <button id="save">保存并立即生效</button>
-      <button class="ghost" id="unlock">立即临时解锁</button>
+      <button class="ghost" id="toggleUnlock">立即临时解锁</button>
       <button class="danger" id="lock">立即锁定</button>
-      <button class="ghost" id="clearUnlock">清除临时解锁</button>
       <button class="ghost" id="restartWeb">重启 Web 服务</button>
       <button class="ghost" id="backupNow">立即备份配置</button>
     </div>
     <div id="msg"></div>
     <div class="hint" style="margin-top:8px">
-      打开页面已自动读取当前配置，无需密码；<b>只有保存配置、执行操作时才校验「当前密码」</b>。<br>
+      打开页面已自动读取当前配置，<b>无需密码</b>；但点击「保存并立即生效」「查看序列」或任一操作按钮时，
+      会弹出密码验证框，输入当前管理密码即可。<br>
       若要修改管理密码：在「安全与服务」里的“管理密码”填写新值并保存（<b>留空表示不修改</b>）。
     </div>
   </div>
@@ -164,7 +214,9 @@
 var $ = function(id){ return document.getElementById(id); };
 var cfg = null;
 
-var keysRevealed = false;   // 是否已输入密码显示序列
+var keysRevealed = false;   // 是否已输入密码查看序列
+var isUnlocked = false;     // 当前是否处于临时解锁状态（由 /api/status 更新）
+var pwdCache = '';          // 本次会话最近一次验证成功的密码，用于弹窗预填
 
 var KEY_NAMES = {
   19:'↑ 上', 20:'↓ 下', 21:'← 左', 22:'→ 右', 23:'OK 确认',
@@ -182,10 +234,56 @@ function fmt(ts){
   var d = new Date(ts);
   return pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 function api(url, opts){
   return fetch(url, opts).then(function(r){ return r.text(); }).then(function(t){
     try { return JSON.parse(t); } catch(e){ return {ok:false, error:t}; }
+  });
+}
+
+/* ---------------- 密码验证弹窗（所有写操作统一走这里） ---------------- */
+function askPassword(title){
+  return new Promise(function(resolve){
+    var mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.innerHTML =
+      '<div class="modal">' +
+        '<h3>' + esc(title || '请输入管理密码') + '</h3>' +
+        '<input type="password" id="__pwd" placeholder="管理密码" autocomplete="current-password">' +
+        '<div class="hint" id="__err" style="color:#ff8a76;min-height:18px;margin-top:6px"></div>' +
+        '<div class="modal-btns">' +
+          '<button class="ghost" id="__cancel">取消</button>' +
+          '<button id="__ok">确定</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(mask);
+
+    var inp = mask.querySelector('#__pwd');
+    inp.value = pwdCache || '';
+    setTimeout(function(){ try { inp.focus(); inp.select(); } catch(e){} }, 50);
+
+    function done(v){
+      if (mask.parentNode) document.body.removeChild(mask);
+      document.removeEventListener('keydown', onKey);
+      resolve(v);
+    }
+    function onKey(e){ if (e.key === 'Escape') done(null); }
+    document.addEventListener('keydown', onKey);
+
+    mask.querySelector('#__cancel').onclick = function(){ done(null); };
+    mask.querySelector('#__ok').onclick = function(){
+      var v = inp.value.trim();
+      if (!v){ mask.querySelector('#__err').textContent = '请输入密码'; return; }
+      done(v);
+    };
+    inp.onkeydown = function(e){
+      if (e.key === 'Enter'){ e.preventDefault(); mask.querySelector('#__ok').click(); }
+    };
+    mask.onclick = function(e){ if (e.target === mask) done(null); };
   });
 }
 
@@ -194,24 +292,81 @@ function loadStatus(){
     if(!s.ok){ $('status').textContent = '状态读取失败'; return; }
     var locked = s.locked;
     var urls = (s.ips || []).map(function(ip){ return 'http://' + ip + ':' + s.port; }).join('  ');
+    // 生效时间段：服务端按星期分组，多组之间用换行分隔，这里转成换行展示
+    var segText = (s.segmentsText || '--').split('\n').join('<br>');
+    // 前台应用：锁屏中显示「锁屏前的应用」（此时它只是被暂停，仍在后台）
+    var fgLabel = s.foregroundPreLock ? '锁屏前应用' : '当前前台应用';
+    var fgValue = esc(s.foregroundName || s.foreground || '未知');
+    if (s.foreground && s.foregroundName && s.foregroundName !== s.foreground){
+      fgValue += ' <span class="hint">(' + esc(s.foreground) + ')</span>';
+    }
+
     $('status').innerHTML =
       '<span class="badge ' + (locked?'on':'off') + '">' + (locked?'已锁定':'未锁定') + '</span> &nbsp;' +
       '模式：' + (s.mode === 'BLOCK' ? '禁用时间段' : '开放时间段') + '（' + (s.enabled?'已启用':'已停用') + '）<br>' +
       '<table>' +
       '<tr><td>盒子时间</td><td>' + fmt(s.now) + '</td></tr>' +
-      '<tr><td>生效时间段</td><td>' + (s.segmentsText || '--') + '</td></tr>' +
-      '<tr><td>临时解锁到</td><td>' + (s.unlockUntil ? fmt(s.unlockUntil) : '无') + '</td></tr>' +
+      '<tr><td>生效时间段</td><td>' + segText + '</td></tr>' +
+      '<tr><td>临时解锁到</td><td>' + (s.tempUnlocked && s.unlockUntil ? fmt(s.unlockUntil) : '无') + '</td></tr>' +
       '<tr><td>下次状态变化</td><td>' + (s.nextTransitionText || fmt(s.nextTransition)) + '</td></tr>' +
       '<tr><td>锁屏是否在显示</td><td>' + (s.lockVisible ? '是' : '否') + '</td></tr>' +
-      '<tr><td>当前前台应用</td><td>' + (s.foreground || '未知') + '</td></tr>' +
+      '<tr><td>' + fgLabel + '</td><td>' + (fgValue || '未知') + '</td></tr>' +
       '<tr><td>守护服务</td><td>' + (s.serviceRunning ? '运行中' : '未运行') + '</td></tr>' +
       '<tr><td>Web 服务</td><td>' + (s.webRunning ? '运行中' : '未运行') + '</td></tr>' +
       '<tr><td>前台识别授权</td><td>' + (s.usageAccess ? '已授权（可精确杀进程）' : '未授权（降级处理）') + '</td></tr>' +
       '<tr><td>设备管理器</td><td>' + (s.deviceAdmin ? '已激活' : '未激活') + '</td></tr>' +
-      '<tr><td>配置备份</td><td>' + (s.backup ? s.backup : '未写入（可在下方点击「立即备份配置」）') + '</td></tr>' +
+      '<tr><td>配置备份</td><td>' + (s.backup ? esc(s.backup) : '未写入（可在下方点击「立即备份配置」）') + '</td></tr>' +
       '<tr><td>访问地址</td><td>' + (urls || '--') + '</td></tr>' +
       '</table>';
+
+    // 合并后的「临时解锁 / 清除临时解锁」按钮：按当前状态切换文案
+    isUnlocked = !!s.tempUnlocked;
+    var tu = $('toggleUnlock');
+    tu.textContent = isUnlocked ? '清除临时解锁' : '立即临时解锁';
   });
+}
+
+/* ---------------- 当前画面截图（免密码） ---------------- */
+var shotUrl = '';
+var shotRetry = 0;
+
+function loadShot(){
+  $('shotMsg').textContent = '正在获取画面…';
+  fetch('/api/screen?t=' + Date.now(), { cache: 'no-store' })
+    .then(function(r){
+      var ct = r.headers.get('Content-Type') || '';
+      if (r.ok && ct.indexOf('image/') === 0) return r.blob();
+      return r.text().then(function(t){
+        var j = null;
+        try { j = JSON.parse(t); } catch(e){}
+        var err = new Error((j && j.error) || '获取失败');
+        err.needConsent = !!(j && j.needConsent);
+        throw err;
+      });
+    })
+    .then(function(blob){
+      shotRetry = 0;
+      var img = $('shotImg');
+      if (shotUrl){ try { URL.revokeObjectURL(shotUrl); } catch(e){} }
+      shotUrl = URL.createObjectURL(blob);
+      img.src = shotUrl;
+      $('shotBox').style.display = 'block';
+      $('refreshShot').style.display = 'inline-block';
+      $('shotMsg').textContent = '';
+      var d = new Date();
+      $('shotTime').textContent = '获取时间：' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    })
+    .catch(function(e){
+      $('shotBox').style.display = 'none';
+      // 电视端还没点「允许」：自动轮询等待，最多约 30 秒
+      if (e && e.needConsent && shotRetry < 15){
+        shotRetry++;
+        $('shotMsg').textContent = '等待电视端授权…（请在电视上用遥控器点击「允许」）';
+        setTimeout(loadShot, 2000);
+        return;
+      }
+      $('shotMsg').textContent = String((e && e.message) || e);
+    });
 }
 
 function renderSegments(){
@@ -255,17 +410,18 @@ function renderOneKeys(boxId, arr, seqNo){
   var box = $(boxId);
   box.innerHTML = '';
   if (!keysRevealed){
-    var e = document.createElement('span');
-    e.className = 'key';
-    e.style.color = '#93a1b5';
-    e.textContent = '🔒 已隐藏';
-    box.appendChild(e);
+    // 隐藏态：直接给一个「查看」按钮（点击需输入密码）
+    var btn = document.createElement('button');
+    btn.className = 'ghost small';
+    btn.textContent = '查看';
+    btn.onclick = toggleKeys;
+    box.appendChild(btn);
     return;
   }
   (arr || []).forEach(function(k, i){
     var s = document.createElement('span');
     s.className = 'key';
-    s.innerHTML = (i + 1) + '. ' + (KEY_NAMES[k] || ('KeyCode ' + k)) +
+    s.innerHTML = (i + 1) + '. ' + esc(KEY_NAMES[k] || ('KeyCode ' + k)) +
                   '<span class="x" data-seq="' + seqNo + '" data-i="' + i + '">✕</span>';
     box.appendChild(s);
   });
@@ -276,6 +432,13 @@ function renderOneKeys(boxId, arr, seqNo){
     e2.textContent = '（空：请至少录入一个按键）';
     box.appendChild(e2);
   }
+  // 显示态：提供「隐藏」按钮，可随时手动再次隐藏
+  var hb = document.createElement('button');
+  hb.className = 'ghost small';
+  hb.textContent = '隐藏';
+  hb.onclick = hideKeys;
+  box.appendChild(hb);
+
   box.querySelectorAll('.x').forEach(function(el){
     el.onclick = function(){
       var target = (+el.dataset.seq === 2) ? cfg.unlockKeys2 : cfg.unlockKeys;
@@ -317,7 +480,7 @@ function renderPad(){
     btn.textContent = b[1];
     btn.title = KEY_NAMES[b[0]] || ('KeyCode ' + b[0]);
     btn.onclick = function(){
-      if (!keysRevealed){ msg('请先点击「显示序列」并输入当前密码', true); return; }
+      if (!keysRevealed){ msg('请先点击「查看」并输入当前密码', true); return; }
       var target = (currentTarget() === 2) ? cfg.unlockKeys2 : cfg.unlockKeys;
       target.push(b[0]);
       renderKeys();
@@ -337,7 +500,7 @@ function collect(){
     lockNow: $('lockNow').checked,
     segments: cfg.segments
   };
-  // 序列默认隐藏：只有点过「显示序列」并验证密码后，才把序列一起提交。
+  // 序列默认隐藏：只有点过「查看」并验证密码后，才把序列一起提交。
   // 否则不提交 unlockKeys / unlockKeys2，服务端会保持原序列不变（防止误覆盖）。
   if (keysRevealed){
     payload.unlockKeys  = (cfg.unlockKeys  || []).slice();
@@ -379,33 +542,44 @@ function fill(c){
   renderKeys();
 }
 
-// 「显示序列」：验证密码后拉取两组真实序列
-function showKeys(){
-  var pwd = $('pwd').value;
-  if(!pwd){ msg('显示序列需要验证密码：请填写「当前密码」', true); return; }
+/* 「查看 / 隐藏」切换：隐藏态点击需先验证密码 */
+function toggleKeys(){
+  if (keysRevealed){ hideKeys(); return; }
+  askPassword('查看解锁序列').then(function(pwd){
+    if (!pwd) return;
+    showKeys(pwd);
+  });
+}
+
+function showKeys(pwd){
   api('/api/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pwd: pwd, action: 'showKeys' })
   }).then(function(r){
-    if(!r.ok){ msg('显示失败：' + (r.error || '未知错误'), true); return; }
+    if(!r.ok){
+      pwdCache = '';
+      msg('查看失败：' + (r.error || '未知错误'), true);
+      return;
+    }
+    pwdCache = pwd;
     cfg.unlockKeys  = (r.unlockKeys  || []).slice();
     cfg.unlockKeys2 = (r.unlockKeys2 || []).slice();
     cfg.keyCount1 = cfg.unlockKeys.length;
     cfg.keyCount2 = cfg.unlockKeys2.length;
     keysRevealed = true;
     renderKeys();
-    msg('序列已显示，可修改后点击「保存配置」');
+    msg('序列已显示，可修改后点击「保存并立即生效」');
   });
 }
 
-// 「重新隐藏」：清空本地序列，回到隐藏态（未保存的改动一并丢弃）
+/* 「隐藏」：清空本地序列，回到隐藏态（未保存的改动一并丢弃） */
 function hideKeys(){
   keysRevealed = false;
   cfg.unlockKeys  = [];
   cfg.unlockKeys2 = [];
   renderKeys();
-  msg('序列已重新隐藏（未保存的改动已丢弃）');
+  msg('序列已隐藏（未保存的改动已丢弃）');
 }
 
 function msg(text, warn){
@@ -415,17 +589,22 @@ function msg(text, warn){
 
 function loadConfig(){
   // 打开页面即自动读取，无需密码（密码仅用于写入校验）
-  // 注意：两组解锁序列默认不下发，需点击「显示序列」并验证密码后才展示
+  // 注意：两组解锁序列默认不下发，需点击「查看」并验证密码后才展示
   api('/api/config').then(function(r){
     if(!r.ok){ msg('配置读取失败：' + (r.error || '未知错误'), true); return; }
     fill(r.config);
-    msg('配置已自动加载；解锁序列已隐藏，如需查看/修改请点击「显示序列」并输入当前密码');
+    msg('配置已自动加载；解锁序列已隐藏，如需查看/修改请点击「查看」并输入当前密码');
   });
 }
 
 function save(){
-  var pwd = $('pwd').value;
-  if(!pwd){ msg('保存需要验证密码：请填写「当前密码」', true); return; }
+  askPassword('保存配置').then(function(pwd){
+    if (!pwd) return;
+    doSave(pwd);
+  });
+}
+
+function doSave(pwd){
   var newPw = $('password').value;          // 管理密码框有值 = 要改密码
   var changingPw = !!newPw;
   var payload = collect();
@@ -435,26 +614,36 @@ function save(){
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).then(function(r){
-    if(!r.ok){ msg('保存失败：' + (r.error || '未知错误'), true); return; }
+    if(!r.ok){
+      if (String(r.error || '').indexOf('密码') >= 0) pwdCache = '';
+      msg('保存失败：' + (r.error || '未知错误'), true);
+      return;
+    }
+    pwdCache = changingPw ? newPw : pwd;   // 密码已变则同步缓存，避免后续操作失败
     fill(r.config);
-    if (changingPw) $('pwd').value = newPw;  // 密码已变，同步「当前密码」避免后续操作失败
     msg('已保存并生效' + (changingPw ? '，管理密码已更新' : '（管理密码未修改）')
         + (keysRevealed ? '' : '（解锁序列未改动）'));
     loadStatus();
   });
 }
 
-function action(a){
-  var pwd = $('pwd').value;
-  if(!pwd){ msg('请先填写当前管理密码', true); return; }
-  api('/api/action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pwd: pwd, action: a })
-  }).then(function(r){
-    if(!r.ok){ msg('操作失败：' + (r.error || '未知错误'), true); return; }
-    msg('操作成功');
-    loadStatus();
+function action(a, label){
+  askPassword('执行「' + (label || a) + '」').then(function(pwd){
+    if (!pwd) return;
+    api('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pwd: pwd, action: a })
+    }).then(function(r){
+      if(!r.ok){
+        if (String(r.error || '').indexOf('密码') >= 0) pwdCache = '';
+        msg('操作失败：' + (r.error || '未知错误'), true);
+        return;
+      }
+      pwdCache = pwd;
+      msg((label || '操作') + '：成功');
+      loadStatus();
+    });
   });
 }
 
@@ -463,8 +652,6 @@ function action(a){
     cfg.segments.push({ start: 18*60, end: 20*60, days: [1,1,1,1,1,1,1] });
     renderSegments();
   };
-  $('showKeys').onclick = showKeys;
-  $('hideKeys').onclick = hideKeys;
   $('clearKey').onclick = function(){
     if (currentTarget() === 2){ cfg.unlockKeys2 = []; } else { cfg.unlockKeys = []; }
     renderKeys();
@@ -475,18 +662,22 @@ function action(a){
     renderKeys();
   };
   $('presetKey').onclick = function(){
-    if (!keysRevealed){ msg('请先点击「显示序列」并输入当前密码', true); return; }
+    if (!keysRevealed){ msg('请先点击「查看」并输入当前密码', true); return; }
     cfg.unlockKeys  = [19,19,20,20,21,21,22,22];
     cfg.unlockKeys2 = [24,24,25,25];
     renderKeys();
-    msg('已填入默认序列，点击「保存配置」后生效');
+    msg('已填入默认序列，点击「保存并立即生效」后生效');
   };
   $('save').onclick = save;
-  $('unlock').onclick = function(){ action('unlock'); };
-  $('lock').onclick = function(){ action('lock'); };
-  $('clearUnlock').onclick = function(){ action('clearUnlock'); };
-  $('restartWeb').onclick = function(){ action('restartWeb'); };
-  $('backupNow').onclick = function(){ action('backup'); };
+  $('showShot').onclick = function(){ shotRetry = 0; loadShot(); };
+  $('refreshShot').onclick = function(){ shotRetry = 0; loadShot(); };
+  $('toggleUnlock').onclick = function(){
+    if (isUnlocked) action('clearUnlock', '清除临时解锁');
+    else action('unlock', '立即临时解锁');
+  };
+  $('lock').onclick = function(){ action('lock', '立即锁定'); };
+  $('restartWeb').onclick = function(){ action('restartWeb', '重启 Web 服务'); };
+  $('backupNow').onclick = function(){ action('backup', '立即备份配置'); };
 
   cfg = { enabled:true, mode:'OPEN', segments:[],
           unlockKeys:[], unlockKeys2:[], keyCount1:0, keyCount2:0,
