@@ -1,6 +1,6 @@
 # KidLock · 儿童限时管控（Android 7.1.2 / Amlogic arm64-v8a 电视盒子）
 
-面向 **Android 7.1.2（API 25）+ Amlogic 四核 arm64-v8a 电视盒子** 的儿童限时管控 App。
+基于 **Android 7.1.2（API 25）+ Amlogic 四核 arm64-v8a （N1）电视盒子** 测试开发的儿童限时管控 App，其他64位安卓设备可自行尝试。
 TV 端界面用 **Flutter（Dart）**，系统级能力（常驻服务 / 全屏锁屏 / 按键拦截 / 杀进程 / 设备管理器 / 内嵌 Web 服务）用 **Kotlin 原生**实现，二者通过 MethodChannel 通信。
 
 ---
