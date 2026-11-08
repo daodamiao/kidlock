@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="format-detection" content="telephone=no">
+<title>遥控器 · 儿童限时管控</title>
+<style>
+  :root { --bg:#0f1319; --card:#181d26; --line:#2a3240; --text:#e9eef5; --dim:#93a1b5; --acc:#4da3ff; --warn:#ff7a5a; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+         display:flex; flex-direction:column; touch-action:manipulation;
+         user-select:none; -webkit-text-size-adjust:100%; }
+  .topbar { display:flex; align-items:center; gap:10px; padding:12px 14px;
+            border-bottom:1px solid var(--line); background:var(--card); }
+  .back { flex:0 0 auto; text-decoration:none; color:var(--text); background:#263041;
+          border-radius:9px; padding:9px 12px; font-size:14px; min-height:44px;
+          display:flex; align-items:center; }
+  .back:active { background:#34435c; }
+  .title { flex:1; text-align:center; font-size:17px; font-weight:600; white-space:nowrap; }
+  .ver { font-size:12px; color:var(--dim); white-space:nowrap; }
+  .help-btn { display:inline-flex; align-items:center; justify-content:center;
+              width:28px; height:28px; flex:0 0 28px; border-radius:50%;
+              border:1px solid var(--line); color:var(--dim); font-size:14px;
+              font-weight:700; cursor:pointer; }
+  .help-btn:active { color:var(--acc); border-color:var(--acc); }
+  .state { text-align:center; padding:12px 14px 4px; font-size:13px; color:var(--dim);
+           min-height:36px; max-height:92px; overflow:auto; line-height:1.55;
+           white-space:pre-wrap; word-break:break-word; }
+  .state.warn { color:var(--warn); }
+  .pad-wrap { flex:1; display:flex; align-items:center; justify-content:center; padding:12px; }
+  .pad { display:grid; grid-template-columns:repeat(3, 88px); grid-auto-rows:88px;
+         gap:12px; justify-content:center; }
+  .key { border:1px solid var(--line); border-radius:18px; background:var(--card);
+         color:var(--text); font-size:26px; font-weight:600;
+         display:flex; align-items:center; justify-content:center;
+         cursor:pointer; box-shadow:0 3px 0 #0b0e13; }
+  .key:active, .key.pressed { background:#2b4770; border-color:var(--acc);
+                              color:#fff; transform:translateY(2px); box-shadow:0 1px 0 #0b0e13; }
+  .key.ok { background:#1d3557; border-color:var(--acc); font-size:17px; letter-spacing:1px; }
+  .up    { grid-column:2; grid-row:1; }
+  .left  { grid-column:1; grid-row:2; }
+  .ok    { grid-column:2; grid-row:2; }
+  .right { grid-column:3; grid-row:2; }
+  .down  { grid-column:2; grid-row:3; }
+  .extra { padding:0 14px; display:flex; gap:10px; justify-content:center; }
+  .backkey { flex:1 1 0; max-width:150px; min-height:54px; border:1px solid var(--line);
+             border-radius:14px; background:#263041; color:var(--text); font-size:15px;
+             display:flex; align-items:center; justify-content:center; cursor:pointer;
+             white-space:nowrap; }
+  .backkey.vol { background:#1e2a38; color:var(--dim); }
+  .backkey:active, .backkey.pressed { background:#3a4a63; border-color:var(--acc); color:#fff; }
+  .foot { padding:14px 14px 22px; text-align:center; font-size:12px; color:var(--dim); }
+  .bridge { margin:0 14px 10px; padding:9px 12px; border:1px solid var(--line);
+            background:#16202b; border-radius:10px; font-size:12px; color:var(--dim);
+            display:flex; align-items:center; gap:10px; line-height:1.5; }
+  .bridge span { flex:1; word-break:break-all; }
+  .bridge.ok { border-color:#2c5945; background:#16261f; color:#8fd6ae; }
+  .bridge.bad { border-color:#5a4a2a; background:#2a2418; color:#e8c98a; }
+  .bridge button { flex:0 0 auto; min-height:34px; padding:0 11px; border:0;
+                   border-radius:8px; background:#334155; color:var(--text);
+                   font-size:12px; cursor:pointer; }
+  .bridge button:active { background:#475a75; }
+  .a11y { margin:0 14px 12px; padding:10px 12px; border:1px solid #5a4a2a;
+          background:#2a2418; border-radius:10px; font-size:12px; color:#e8c98a;
+          display:flex; align-items:center; gap:10px; line-height:1.55; }
+  .a11y[hidden] { display:none; }
+  .a11y span { flex:1; }
+  .a11y button { flex:0 0 auto; min-height:38px; padding:0 13px; border:0;
+                 border-radius:8px; background:#c9923f; color:#1a1408; font-size:13px;
+                 font-weight:600; cursor:pointer; }
+  .a11y button:active { background:#e0ad5b; }
+  .mask { position:fixed; inset:0; background:rgba(0,0,0,.68); z-index:99;
+          display:flex; align-items:center; justify-content:center; padding:16px; }
+  .mask[hidden] { display:none; }
+  .dialog { background:var(--card); border:1px solid var(--line); border-radius:14px;
+            padding:18px; width:100%; max-width:400px; box-shadow:0 12px 40px rgba(0,0,0,.55); }
+  .dialog h3 { margin:0 0 10px; font-size:17px; }
+  .dialog p { margin:0 0 10px; font-size:14px; color:var(--dim); line-height:1.75; }
+  .dialog p b { color:var(--text); font-weight:600; }
+  .dialog input { width:100%; background:#0f141c; color:var(--text);
+                  border:1px solid var(--line); border-radius:9px;
+                  padding:10px 12px; font-size:16px; min-height:44px; }
+  .dialog button { width:100%; min-height:44px; margin-top:12px; border:0;
+                   border-radius:9px; background:var(--acc); color:#fff; font-size:15px; }
+  .dialog .alt { display:block; text-align:center; margin-top:12px;
+                 color:var(--dim); font-size:13px; }
+  .err { margin-top:8px; font-size:13px; color:var(--warn); min-height:18px; }
+
+  @media (min-width: 641px) {
+    .pad { grid-template-columns:repeat(3, 100px); grid-auto-rows:100px; gap:14px; }
+  }
+  @media (max-width: 400px) {
+    .topbar { padding:9px 10px; gap:7px; }
+    .title { font-size:15px; }
+    .back { font-size:13px; padding:8px 10px; }
+    .ver { display:none; }
+    .pad { grid-template-columns:repeat(3, 72px); grid-auto-rows:72px; gap:10px; }
+    .key { font-size:22px; border-radius:15px; }
+    .extra { padding:0 10px; gap:7px; }
+    .backkey { font-size:12px; min-height:50px; border-radius:12px; }
+    .dialog { max-width:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="back" href="/">← 返回主界面</a>
+  <div class="title">遥控器</div>
+  <span class="ver" id="ver">v1.4.5</span>
+  <span class="help-btn" id="helpBtn" title="使用说明">?</span>
+</div>
+
+<div class="state" id="state">正在连接盒子…</div>
+
+<div class="bridge" id="bridgeBar">
+  <span id="bridgeText">正在检测盒子系统遥控服务（8080）…</span>
+  <button id="bridgeBtn">重新检测</button>
+</div>
+
+<div class="pad-wrap">
+  <div class="pad">
+    <div class="key up" data-key="19" data-label="↑ 上">↑</div>
+    <div class="key left" data-key="21" data-label="← 左">←</div>
+    <div class="key ok" data-key="23" data-label="OK 确认">OK</div>
+    <div class="key right" data-key="22" data-label="→ 右">→</div>
+    <div class="key down" data-key="20" data-label="↓ 下">↓</div>
+  </div>
+</div>
+
+<div class="extra">
+  <div class="backkey vol" data-key="25" data-label="音量− (VOL_DOWN)">− 音量</div>
+  <div class="backkey" data-key="4" data-label="返回 (BACK)">返回 (BACK)</div>
+  <div class="backkey vol" data-key="24" data-label="音量＋ (VOL_UP)">＋ 音量</div>
+</div>
+
+<div class="a11y" id="a11yBar" hidden>
+  <span id="a11yText">返回键需要更高权限：请在电视上开启无障碍服务（或让盒子取得 root）。</span>
+  <button id="a11yBtn">去开启</button>
+</div>
+
+<div class="foot">按键经盒子系统遥控服务发送到电视 · 音量键直接调节系统音量</div>
+
+<div class="mask" id="pwdMask" hidden>
+  <div class="dialog">
+    <h3>需要管理密码</h3>
+    <p>发送遥控器按键前，请先验证 Web 管理密码。</p>
+    <input type="password" id="pwdInput" placeholder="管理密码" autocomplete="off">
+    <div class="err" id="pwdErr"></div>
+    <button id="pwdOk">确定</button>
+    <a class="alt" href="/">返回主界面</a>
+  </div>
+</div>
+
+<div class="mask" id="helpMask" hidden>
+  <div class="dialog">
+    <h3>遥控器使用说明</h3>
+    <p>这里提供 <b>上 / 下 / 左 / 右 / 确认(OK) / 返回 / 音量− / 音量＋</b> 共 8 个按键，点击后等同于按电视遥控器。</p>
+    <p><b>音量键</b>直接调用系统音量服务，不需要注入权限，在任意界面都生效。其余按键<b>优先交给盒子自带的系统遥控服务</b>（8080 端口），由系统身份执行，因此方向键、OK、返回在第三方应用界面里也能生效。</p>
+    <p>所有按键都需要<b>管理密码</b>，首次打开时验证一次即可，本次浏览会话内有效。密码错误或已修改时会自动要求重新输入。</p>
+    <p>盒子的<b>全屏锁屏页</b>或家长验证页显示时，按键会直接送到该页面，也可以用来输入解锁序列。</p>
+    <p><b>为什么以前返回键会失效</b>：普通应用没有系统注入权限（<b>INJECT_EVENTS</b>），adb shell 手动注入能成功是因为它跑在 shell UID。现在改为复用 N1 / YYF 盒子系统的 <b>POST /v1/keyevent</b> 接口（与手机端「N1 遥控器」App 完全一样，只是从本机 127.0.0.1 走），按键由盒子系统服务执行。若盒子上没有这个服务，会依次回退到 <b>root 身份</b>执行 <b>input keyevent</b>、以及<b>无障碍全局返回</b>（点页面「去开启」，在「设置→无障碍」打开「儿童限时管控」）；该服务不读取屏幕内容。</p>
+    <p>页面顶部状态条显示 <b>8080 系统遥控服务</b>是否可用，服务后启动时点「重新检测」即可。发送成功后状态栏会显示实际生效的路径（如「盒子系统遥控服务 :8080/v1/keyevent」「应用内投递」「root input keyevent」「无障碍全局返回」「系统音量服务」）。若提示「发送失败」，后面会带上每条路径的具体原因。</p>
+    <button id="helpClose">知道了</button>
+  </div>
+</div>
+
+<script>
+var $ = function(id){ return document.getElementById(id); };
+var PWD_KEY = 'kidlock_pwd';
+var lastSend = 0;
+
+function getPwd(){ try { return sessionStorage.getItem(PWD_KEY) || ''; } catch(e){ return ''; } }
+function setPwd(p){ try { sessionStorage.setItem(PWD_KEY, p); } catch(e){} }
+function clearPwd(){ try { sessionStorage.removeItem(PWD_KEY); } catch(e){} }
+
+// 服务端所有 JSON 响应均为 HTTP 200，成功与否看 body 的 ok 字段
+function api(url, opts){
+  return fetch(url, opts).then(function(r){ return r.text(); }).then(function(t){
+    try { return JSON.parse(t); } catch(e){ return { ok:false, error:t }; }
+  });
+}
+
+function setState(text, warn){
+  $('state').textContent = text;
+  $('state').className = warn ? 'state warn' : 'state';
+}
+
+function askPwd(errText){
+  $('pwdErr').textContent = errText || '';
+  $('pwdInput').value = '';
+  $('pwdMask').hidden = false;
+  try { $('pwdInput').focus(); } catch(e){}
+}
+function closePwd(){ $('pwdMask').hidden = true; }
+
+function verify(pwd){
+  return api('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pwd: pwd })
+  }).then(function(r){ return !!r.ok; }, function(){ return false; });
+}
+
+function flash(el){
+  el.className += ' pressed';
+  setTimeout(function(){ el.className = el.className.replace(/\s*pressed/g, ''); }, 150);
+}
+
+function sendKey(el){
+  var now = Date.now();
+  if (now - lastSend < 90) return;
+  lastSend = now;
+  flash(el);
+
+  var pwd = getPwd();
+  if (!pwd){ clearPwd(); askPwd('请先验证管理密码'); return; }
+
+  var code = parseInt(el.getAttribute('data-key'), 10);
+  var label = el.getAttribute('data-label');
+  api('/api/key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pwd: pwd, key: code })
+  }).then(function(r){
+    if (!r.ok){
+      if (String(r.error || '').indexOf('密码') >= 0){
+        clearPwd();
+        askPwd('密码已失效，请重新输入');
+        return;
+      }
+      var msg = '发送失败：' + (r.error || '盒子未响应');
+      setState(msg, true);
+      $('state').title = msg;
+      return;
+    }
+    // 展示服务端实际生效的路径，便于判断是应用内投递还是系统注入
+    setState('已发送 ' + label + (r.path ? ' · ' + r.path : ''));
+    $('state').title = r.path || '';
+    if (navigator.vibrate){ try { navigator.vibrate(15); } catch(e){} }
+  }, function(e){
+    var msg = '连接失败：' + e;
+    setState(msg, true);
+    $('state').title = msg;
+  });
+}
+
+// 读取系统遥控服务 / 无障碍状态；首次进入才写状态栏，避免覆盖按键报错
+function refreshStatus(first){
+  api('/api/status').then(function(s){
+    if (!s.ok){
+      if (first) setState('盒子连接失败，请检查网络', true);
+      return;
+    }
+    if (s.version) $('ver').textContent = 'v' + s.version;
+    var hasBridge = !!s.bridge;
+    $('bridgeBar').className = 'bridge ' + (hasBridge ? 'ok' : 'bad');
+    $('bridgeText').textContent = hasBridge
+      ? '盒子系统遥控服务已连接 · ' + (s.bridgeDetail || '8080/v1/keyevent')
+      : '未检测到盒子系统遥控服务(8080) · 将回退到 root / 无障碍方式';
+    // 系统服务可用时不需要无障碍；不可用时才提示去开启
+    $('a11yBar').hidden = hasBridge || !!s.accessibility;
+    if (!first) return;
+    if (!getPwd()) setState('请验证管理密码');
+    else setState('已连接，点击按键发送');
+  }, function(){
+    if (first) setState('盒子连接失败，请检查网络', true);
+  });
+}
+
+// 重新探测盒子系统遥控服务（服务后启动 / 换网络后由用户手动触发）
+function reprobeBridge(){
+  var pwd = getPwd();
+  if (!pwd){ clearPwd(); askPwd('请先验证管理密码'); return; }
+  $('bridgeText').textContent = '正在重新检测…';
+  api('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pwd: pwd, action: 'reprobeBridge' })
+  }).then(function(r){
+    if (!r.ok){
+      if (String(r.error || '').indexOf('密码') >= 0){ clearPwd(); askPwd('密码已失效，请重新输入'); return; }
+      $('bridgeText').textContent = r.error || '检测失败';
+      return;
+    }
+    refreshStatus(false);
+  }, function(e){
+    $('bridgeText').textContent = '检测失败：' + e;
+  });
+}
+
+function openAccessibility(){
+  var pwd = getPwd();
+  if (!pwd){ clearPwd(); askPwd('请先验证管理密码'); return; }
+  api('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pwd: pwd, action: 'openAccessibility' })
+  }).then(function(r){
+    if (!r.ok){
+      if (String(r.error || '').indexOf('密码') >= 0){ clearPwd(); askPwd('密码已失效，请重新输入'); return; }
+      setState(r.error || '无法打开无障碍设置', true);
+      return;
+    }
+    setState('已在电视上打开「无障碍」设置，请用遥控器开启「儿童限时管控」后返回本页');
+  }, function(e){
+    setState('连接失败：' + e, true);
+  });
+}
+
+(function init(){
+  $('pwdOk').onclick = function(){
+    var p = $('pwdInput').value;
+    if (!p){ $('pwdErr').textContent = '请输入管理密码'; return; }
+    $('pwdErr').textContent = '验证中…';
+    verify(p).then(function(ok){
+      if (!ok){ $('pwdErr').textContent = '密码错误，请重试'; return; }
+      setPwd(p);
+      closePwd();
+      setState('已连接，点击按键发送');
+    });
+  };
+  $('pwdInput').onkeydown = function(ev){
+    if (ev.keyCode === 13) $('pwdOk').click();
+  };
+
+  $('helpBtn').onclick = function(){ $('helpMask').hidden = false; };
+  $('helpClose').onclick = function(){ $('helpMask').hidden = true; };
+  $('helpMask').onclick = function(ev){ if (ev.target === $('helpMask')) $('helpMask').hidden = true; };
+  document.onkeydown = function(ev){ if (ev.keyCode === 27) $('helpMask').hidden = true; };
+
+  document.querySelectorAll('[data-key]').forEach(function(el){
+    el.onclick = function(){ sendKey(el); };
+  });
+
+  $('a11yBtn').onclick = openAccessibility;
+  $('bridgeBtn').onclick = reprobeBridge;
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) refreshStatus(false);
+  });
+  refreshStatus(true);
+
+  if (!getPwd()) askPwd();
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 package com.kidlock.app
 
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import android.util.Log
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -17,14 +19,22 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * 内嵌 Web 配置服务（纯 ServerSocket 实现，零第三方依赖）：
  *  GET  /                      -> 配置页面
- *  GET  /api/status            -> 当前状态（无需密码）
+ *  GET  /remote                -> 全屏遥控器页面（v1.4.2，独立页面，移动优先）
+ *  GET  /api/status            -> 当前状态（无需密码；含 version、accessibility、bridge）
  *  GET  /api/screen            -> 当前画面截图（JPEG，无需密码；未授权时拉起系统授权框）
  *  GET  /api/config            -> 读取配置（无需密码；序列不下发，只给步数）
  *  POST /api/config            -> 保存配置（body 为 JSON，含 pwd 字段）
- *  POST /api/action            -> {pwd, action}：showKeys / unlock / lock / clearUnlock / restartWeb / backup
+ *  POST /api/action            -> {pwd, action}：showKeys / unlock / lock / clearUnlock /
+ *                                 restartWeb / backup / eval / openAccessibility（跳系统无障碍设置）/
+ *                                 reprobeBridge（重新探测盒子系统遥控服务 8080）
+ *  POST /api/auth              -> {pwd} 仅校验管理密码（v1.4.2，遥控器页首次进入用）
+ *  POST /api/key               -> {pwd, key} 遥控器按键（首选盒子系统遥控服务桥接，
+ *                                 失败再走 root 注入 / 无障碍全局返回 / 应用内投递；
+ *                                 成功返回 path，失败返回逐条路径 error）
  *
- *  权限模型：读配置免密，写操作（保存 / 查看序列 / 立即锁定等）一律校验管理密码。
+ *  权限模型：读配置免密，写操作（保存 / 查看序列 / 立即锁定 / 发按键等）一律校验管理密码。
  *  前端不再常驻「当前密码」输入框，改为每次写操作弹出密码验证框后提交。
+ *  注意：所有 JSON 响应均为 HTTP 200，成功与否一律看 body 的 ok 字段。
  */
 class ConfigWebServer(private val appContext: Context) {
 
@@ -142,7 +152,12 @@ class ConfigWebServer(private val appContext: Context) {
             path == "/api/config" && method == "GET" -> handleGetConfig(out, query)
             path == "/api/config" && method == "POST" -> handleSaveConfig(out, body)
             path == "/api/action" && method == "POST" -> handleAction(out, body)
+            path == "/api/auth" && method == "POST" -> handleAuth(out, body)
+            path == "/api/key" && method == "POST" -> handleKey(out, body)
             path == "/favicon.ico" -> respond(out, 204, "text/plain", ByteArray(0))
+            path == "/remote" || path == "/remote.html" -> {
+                respond(out, 200, "text/html; charset=utf-8", pageBytes(R.raw.remote_page))
+            }
             path == "/" || path == "/index.html" || path == "/config" -> {
                 respond(out, 200, "text/html; charset=utf-8", pageBytes())
             }
@@ -265,6 +280,30 @@ class ConfigWebServer(private val appContext: Context) {
                 )
                 return
             }
+            // 重新探测盒子自带的系统遥控服务（服务后启动 / 换了网络时用户可手动点）
+            if (action == "reprobeBridge") {
+                val ok = N1KeyBridge.reset()
+                json(
+                    out,
+                    JSONObject().put("ok", true)
+                        .put("bridge", ok)
+                        .put("detail", N1KeyBridge.status())
+                )
+                return
+            }
+            // v1.4.3：无 root 设备上一键打开系统无障碍设置，开启后 BACK 走全局返回动作
+            if (action == "openAccessibility") {
+                try {
+                    val i = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    appContext.startActivity(i)
+                    json(out, JSONObject().put("ok", true))
+                } catch (t: Throwable) {
+                    Log.w(TAG, "open accessibility settings failed", t)
+                    json(out, JSONObject().put("ok", false).put("error", t.message ?: "无法打开无障碍设置"))
+                }
+                return
+            }
             when (action) {
                 "unlock" -> MonitorService.act(appContext, MonitorService.ACTION_UNLOCK_ONCE)
                 "lock" -> MonitorService.act(appContext, MonitorService.ACTION_LOCK_NOW)
@@ -279,6 +318,65 @@ class ConfigWebServer(private val appContext: Context) {
             }
             json(out, JSONObject().put("ok", true))
         } catch (t: Throwable) {
+            json(out, JSONObject().put("ok", false).put("error", t.message ?: "解析失败"))
+        }
+    }
+
+    /** v1.4.2：遥控器页首次进入时只校验密码，不下发任何敏感配置。 */
+    private fun handleAuth(out: OutputStream, body: ByteArray) {
+        val text = String(body, Charset.forName("UTF-8"))
+        val cur = ConfigStore.load(appContext)
+        try {
+            val o = JSONObject(text)
+            val ok = checkPwd(o.optString("pwd", ""), cur)
+            val r = JSONObject().put("ok", ok)
+            if (!ok) r.put("error", "密码错误")
+            json(out, r)
+        } catch (t: Throwable) {
+            json(out, JSONObject().put("ok", false).put("error", t.message ?: "解析失败"))
+        }
+    }
+
+    /** v1.4.3：Web 遥控器按键 {pwd, key}，密码校验 + 白名单 + 分路径发送。 */
+    private fun handleKey(out: OutputStream, body: ByteArray) {
+        val text = String(body, Charset.forName("UTF-8"))
+        val cur = ConfigStore.load(appContext)
+        try {
+            val o = JSONObject(text)
+            if (!checkPwd(o.optString("pwd", ""), cur)) {
+                json(out, JSONObject().put("ok", false).put("error", "密码错误"))
+                return
+            }
+            val key = o.optInt("key", 0)
+            if (!KeyInjector.isAllowed(key)) {
+                json(out, JSONObject().put("ok", false).put("error", "不支持的按键 $key"))
+                return
+            }
+            val ok = KeyInjector.send(appContext, key)
+            val r = JSONObject().put("ok", ok)
+            if (ok) {
+                // 展示实际生效的路径，方便判断是应用内投递还是系统注入
+                r.put("path", KeyInjector.lastPath)
+            } else {
+                // 不再只回一句笼统的「注入失败」，把每条失败路径的原因带给前端
+                val detail = KeyInjector.lastError
+                val base = if (detail.isEmpty()) "按键注入失败：盒子固件可能限制应用注入按键"
+                else "按键注入失败：$detail"
+                // 针对最常见的原因给出可操作引导：先确认盒子系统遥控服务(8080)是否可用
+                val a11yOn = KidLockAccessibilityService.isConnected ||
+                    KidLockAccessibilityService.isEnabledInSettings(appContext)
+                val tip = if (!N1KeyBridge.isAvailable()) {
+                    if (key == 4 && !a11yOn) {
+                        "。提示：请在遥控器页点「重新检测」确认盒子系统遥控服务(8080)是否可用；盒子无此服务时，请到「设置→无障碍」开启「儿童限时管控」或让盒子取得 root"
+                    } else {
+                        "。提示：请在遥控器页点「重新检测」确认盒子系统遥控服务(8080)是否可用"
+                    }
+                } else ""
+                r.put("error", base + tip)
+            }
+            json(out, r)
+        } catch (t: Throwable) {
+            Log.e(TAG, "key inject failed", t)
             json(out, JSONObject().put("ok", false).put("error", t.message ?: "解析失败"))
         }
     }
@@ -302,6 +400,25 @@ class ConfigWebServer(private val appContext: Context) {
             }
         }
         o.put("ok", true)
+        // v1.4.3：无障碍是否已开启（返回键能否走系统全局返回）
+        o.put(
+            "accessibility",
+            KidLockAccessibilityService.isConnected ||
+                KidLockAccessibilityService.isEnabledInSettings(appContext)
+        )
+        // 盒子系统遥控服务（8080/v1/keyevent）是否可用，遥控器页据此显示连接状态
+        o.put("bridge", N1KeyBridge.isAvailable())
+        o.put("bridgeDetail", N1KeyBridge.status())
+        // v1.4.2：包名版本由 pubspec.yaml 驱动，供配置页 / 遥控器页展示
+        try {
+            o.put(
+                "version",
+                appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName ?: ""
+            )
+        } catch (t: Throwable) {
+            // 取不到版本时留空（前端不显示），避免硬编码版本号与实际构建不一致
+            o.put("version", "")
+        }
         return o
     }
 
@@ -381,12 +498,12 @@ class ConfigWebServer(private val appContext: Context) {
         s
     }
 
-    private fun pageBytes(): ByteArray {
+    private fun pageBytes(resId: Int = R.raw.config_page): ByteArray {
         return try {
-            appContext.resources.openRawResource(R.raw.config_page).use { it.readBytes() }
+            appContext.resources.openRawResource(resId).use { it.readBytes() }
         } catch (t: Throwable) {
             Log.e(TAG, "read page failed", t)
-            "<html><body>config page missing</body></html>".toByteArray(Charset.forName("UTF-8"))
+            "<html><body>page missing</body></html>".toByteArray(Charset.forName("UTF-8"))
         }
     }
 

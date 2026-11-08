@@ -10,4 +10,5 @@
     <string name="countdown_unknown">请等待家长解锁</string>
     <string name="hint_unlock">家长解锁：按遥控器解锁序列，可临时解锁 %1$d 分钟</string>
     <string name="admin_explain">激活后可防止被卸载，并允许到点直接锁屏</string>
+    <string name="accessibility_desc">让网页遥控器的「返回」键在第三方应用界面也能生效。开启后仅在本应用收到遥控指令时执行一次系统返回动作，不读取屏幕内容、不收集任何信息。</string>
 </resources>

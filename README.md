@@ -3,6 +3,10 @@
 面向 **Android 7.1.2（API 25）+ Amlogic 四核 arm64-v8a 电视盒子** 的儿童限时管控 App。
 TV 端界面用 **Flutter（Dart）**，系统级能力（常驻服务 / 全屏锁屏 / 按键拦截 / 杀进程 / 设备管理器 / 内嵌 Web 服务）用 **Kotlin 原生**实现，二者通过 MethodChannel 通信。
 
+> **当前版本：v1.4.5（versionCode 10）**。版本源为 `pubspec.yaml` 的 `version: 1.4.5+10`，`build.gradle.kts` 读取 `flutter.versionCode` / `flutter.versionName`；发布包 `app-release-v1.4.5.apk`。
+>
+> v1.4.5 修复**网页遥控器按键失效**：不再依赖应用自身注入按键，改为**优先复用盒子自带的 `8080/v1/keyevent` 系统遥控服务**（详见「五、7. Web 遥控器」）。v1.4.4 为编译修复版（删除无障碍配置里非法的 `android:flags`）。
+
 ---
 This project source code is available for non-commercial use only. Commercial use requires written authorization. 
 本项目源码仅允许非商业使用，商业使用需要作者书面授权
@@ -52,14 +56,19 @@ KidLock/
     │   ├── KeySequenceMatcher.kt         # 多组解锁序列并行匹配（遥控器方向键 / 手机音量键）
     │   ├── ForegroundHelper.kt           # 前台应用识别（UsageStats + 降级）
     │   ├── ConfigStore.kt / Config.kt    # 配置模型 + SharedPreferences 持久化
-    │   ├── ConfigWebServer.kt            # 内嵌 HTTP 服务（配置页 + JSON API + 截图接口）
+    │   ├── ConfigWebServer.kt            # 内嵌 HTTP 服务（配置页 + JSON API + 截图接口 + 遥控器接口）
+    │   ├── N1KeyBridge.kt                # 盒子系统遥控服务桥接：POST 127.0.0.1:8080/v1/keyevent（首选路径）
+    │   ├── KeyInjector.kt                # 按键分发：系统服务 → 应用内投递 → root → 无障碍 → 注入降级
+    │   ├── KidLockAccessibilityService.kt # 无 8080 服务且无 root 时执行 GLOBAL_ACTION_BACK
     │   ├── ScreenCapture.kt              # 屏幕截图（MediaProjection，免 root）
     │   ├── CaptureActivity.kt            # 截屏授权页（无界面，弹系统授权框）
     │   ├── BootReceiver.kt               # 开机 / 升级 / 时间变更自启
     │   └── KidDeviceAdmin.kt             # 设备管理器（防卸载 + lockNow）
     └── res/
-        ├── raw/config_page.html          # Web 配置页面（单文件，内联 CSS/JS，含移动端适配）
-        ├── xml/device_admin.xml
+        ├── raw/config_page.html          # Web 配置页面（单文件，内联 CSS/JS，含移动端适配 + 问号说明 + 折叠卡片）
+        ├── raw/remote_page.html          # v1.4.2 全屏遥控器页面（独立页面，移动优先）
+        ├── xml/device_admin.xml           # 设备管理器策略
+        ├── xml/accessibility_service_config.xml # 无障碍服务配置（不读窗口内容）
         ├── drawable-xxhdpi/ic_stat.png   # 通知小图标
         └── values/{strings,styles}.xml   # LaunchTheme / NormalTheme / LockTheme
 ```
@@ -174,6 +183,38 @@ adb shell appops set com.kidlock.app GET_USAGE_STATS allow     # 推荐
 - **临时解锁按钮**：`status.tempUnlocked` 驱动文案在「立即临时解锁 / 清除临时解锁」之间切换，对应 `unlock` / `clearUnlock` 两个 action。
 - **截图**：`ScreenCapture`（`MediaProjection` + `VirtualDisplay` + `ImageReader`）抓一帧编码为 JPEG；未授权时 `GET /api/screen` 会拉起 `CaptureActivity` 弹系统授权框并返回 `needConsent`，前端每 2s 轮询等待。授权期间 `isConsentUiActive()` 让守护服务暂缓抢占前台，避免授权框被锁屏页顶掉。
 
+### 7. Web 遥控器（v1.4.2 新增，现改为复用盒子系统遥控服务）
+- 配置页点「打开遥控器」→ 进入**独立全屏页面** `GET /remote`，含 <kbd>上</kbd>/<kbd>下</kbd>/<kbd>左</kbd>/<kbd>右</kbd>/<kbd>OK</kbd>/<kbd>返回</kbd>/<kbd>音量−</kbd>/<kbd>音量＋</kbd> 八个按键（返回键两侧各一个音量键）；顶栏「返回主界面」回到配置页。
+
+#### 按键为什么会失效：执行注入的进程身份
+`INJECT_EVENTS` 是 **signature 级权限**，普通应用申请不到。应用进程里无论 `Instrumentation.sendKeyDownUpSync()`、反射 `InputManager.injectInputEvent()` 还是 `Runtime.exec("input keyevent 4")`，UID 都是 `u0_aXX`，都会被 `InputManagerService` 拒掉；`adb shell input keyevent 4` 能成功是因为它跑在 **shell UID**。`Instrumentation` 对 BACK 还常「不抛异常但静默丢弃」，造成假成功短路。
+
+**正解是根本不要由应用自己注入**。参考 https://github.com/Jimmuy/N1_controler —— 手机端「N1 遥控器」App 本身不注入任何按键，它只往盒子发一个 HTTP 请求：
+
+```http
+POST http://<盒子IP>:8080/v1/keyevent
+Content-Type: application/json
+
+{"keycode":4,"longclick":false}
+```
+
+真正执行 `input keyevent` 的是盒子 YYF 系统里那个跑在 **system/root 身份**下的常驻服务，所以方向键、OK、返回、音量、主页、菜单、电源全都能生效。KidLock 就装在这台盒子上，因此 `N1KeyBridge` 直接访问 `127.0.0.1:8080`；由 Kotlin 侧转发（而不是让网页 JS 直连）是为了绕开浏览器 CORS、保留 `/api/key` 的管理密码校验，并能读到 HTTP 状态码与响应体。
+
+| 场景 | 处理路径（按顺序） |
+| --- | --- |
+| 音量 24/25 | `AudioManager.adjustStreamVolume()` → 系统遥控服务 → shell → InputManager 反射 → Instrumentation（音量是全局设置，无需注入权限，任意界面生效） |
+| 其余所有按键（含 BACK） | **盒子系统遥控服务 `POST 127.0.0.1:8080/v1/keyevent`** → 自家界面 `dispatchKeyEvent(DOWN/UP)` → `su -c "input keyevent N"` → 无障碍 `GLOBAL_ACTION_BACK`（仅 BACK）→ InputManager 反射 → Instrumentation |
+
+- **系统服务桥接 `N1KeyBridge.kt`**：纯 JDK `HttpURLConnection`，零第三方依赖。探测只做 TCP connect（400ms，先 `127.0.0.1`，失败再枚举本机 IPv4），**不发探测请求、无副作用**；端口未开放时缓存 30 秒避免每次按键都等超时；服务返回非 2xx 或请求异常立即作废缓存并自动降级，因此非 YYF 固件不受影响。Manifest 显式声明 `android:usesCleartextTraffic="true"` 保证明文 HTTP 不被固件收紧策略拦掉。
+- **前端可见状态**：`GET /api/status` 新增 `bridge` / `bridgeDetail`；遥控器页顶部状态条显示「已连接 / 未检测到」，服务后启动可点「重新检测」（`POST /api/action {action:"reprobeBridge"}`）。成功时 `path` 显示 `盒子系统遥控服务 :8080/v1/keyevent`，失败时 `error` 带每条路径的具体原因。
+- **降级路径（盒子上没有 8080 服务时）**：`KeyInjector.hasSu()` 用 `su -c id` 探测一次并缓存，root 下执行 `input keyevent` 与 adb shell 等价；`KidLockAccessibilityService` 调 `performGlobalAction(GLOBAL_ACTION_BACK)` 由系统执行全局返回，配置 `canRetrieveWindowContent=false`、`canPerformGestures=false`，事件回调一律忽略，**不读取屏幕内容**；`KidLockApp.foregroundActivity` 在自家界面直接投递 DOWN/UP，锁屏页 / 家长验证页照常喂给解锁序列。`exec()` 合并 stdout/stderr、带超时保护（API 25 没有 `Process.waitFor(timeout)`），shell 真实报错会回传前端。
+- 遥控器页的「去开启」按钮仍保留：仅当 8080 服务不可用且无障碍未开启时显示，点击走 `POST /api/action {action:"openAccessibility"}` 跳系统设置（需管理密码），从设置返回时用 `visibilitychange` 自动刷新 `accessibility` 状态。
+- `POST /api/auth` 只校验密码、不下发任何配置；密码存 `sessionStorage`，配置页已验证过时点「打开遥控器」会自动带上。
+- 遥控器页移动优先：3×3 方向键盘按屏宽自适应（72 / 88 / 100px），按钮 ≥44px、输入框 16px 防 iOS 缩放；发送节流 90ms + 振动反馈。状态栏显示实际生效路径（`盒子系统遥控服务` / `root input keyevent` / `无障碍全局返回` / `应用内投递` / `系统音量服务`），失败时显示各路径的具体报错。
+- **配置页 v1.4.2 UI**：各功能项的说明文字收进标题右侧 **?** 浮窗；时间段、解锁序列、安全与服务**默认折叠**，点标题展开。
+
+> **部署要求**：① 盒子是 N1 / YYF 等带 `8080/v1/keyevent` 系统遥控服务的固件 → **装完即可用，无需 root、无需无障碍、无需任何手动配置**；可先用手机端「N1 遥控器」App 验证盒子 8080 服务是否活着。② 其它固件没有这个服务 → 自动回退，此时仍需盒子已 root，或在遥控器页点「去开启」打开一次无障碍服务，第三方应用界面下的返回键才生效；自家界面与音量键不受此限制。也可把 APK 装到 `/system/priv-app` 或用平台签名，让应用直接持有 `INJECT_EVENTS`。
+
 ---
 
 ## 六、编译与安装部署
@@ -215,7 +256,9 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 4. 解锁序列默认**隐藏**：每组显示位置是一个「查看」按钮，点击→输入密码→显示序列，按钮随即变成「隐藏」，可随时再隐藏回去；显示后用虚拟按键点击录入；
 5. 界面已做**移动端适配**：宽度 ≤640px 时控件纵向铺满、按钮加大、虚拟按键改 4 列网格；
 6. 「当前画面」卡片可**查看盒子此刻的屏幕截图**（无需密码，首次需在电视上允许一次系统截屏授权）；
-7. 建议第一时间改掉管理密码。
+7. 点「打开遥控器」进入**全屏遥控器界面**（手机浏览器同样适用），验证一次管理密码后即可远程操作盒子：方向键 + OK + 返回，底部还有**音量− / 音量＋**；左上角「返回主界面」回到配置页；
+8. 各功能项标题右侧的 **?** 可查看说明；时间段、解锁序列、安全与服务默认折叠，点标题展开；
+9. 建议第一时间改掉管理密码。
 
 盒子端「设置」页也支持遥控器操作，但**解锁序列只做只读展示**，修改请走 Web 控制台。
 
@@ -232,11 +275,17 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/status` | 状态快照（无需密码） |
+| GET | `/` | 配置页面（v1.4.2：问号说明浮窗 + 长功能项默认折叠 + 移动端适配） |
+| GET | `/remote` | v1.4.2 全屏遥控器页面（独立页面，免密访问；发按键时才校验密码） |
+| GET | `/api/status` | 状态快照（无需密码）；含 `version`、`accessibility`（无障碍）、`bridge` / `bridgeDetail`（盒子系统遥控服务 8080 是否可用） |
 | GET | `/api/screen` | 当前画面截图，成功返回 `image/jpeg`；未授权时拉起系统授权框并返回 `{ok:false, needConsent:true, error}` |
 | GET | `/api/config` | 读取配置（无需密码；`password` 与两组 `unlockKeys*` 均不下发，只返回步数 `keyCount1/keyCount2`） |
 | POST | `/api/config` | JSON（含 `pwd` 校验）保存并立即生效；`password` 留空表示不修改；未提交 `unlockKeys*` 则保持原序列不变 |
-| POST | `/api/action` | `{pwd, action}`，action ∈ `unlock` / `lock` / `clearUnlock` / `restartWeb` / `backup` / `eval` / `showKeys`（校验密码后返回两组真实序列） |
+| POST | `/api/action` | `{pwd, action}`，action ∈ `unlock` / `lock` / `clearUnlock` / `restartWeb` / `backup` / `eval` / `showKeys` / `openAccessibility`（打开系统无障碍设置）/ `reprobeBridge`（重新探测 8080 系统遥控服务，返回 `{bridge, detail}`） |
+| POST | `/api/auth` | v1.4.2 `{pwd}` 仅校验管理密码，返回 `{ok}`，不下发任何配置 |
+| POST | `/api/key` | `{pwd, key}` 发送遥控器按键；key 仅允许 19↑ / 20↓ / 21← / 22→ / 23 OK / 66 ENTER / 4 返回 / 24 音量+ / 25 音量−。**首选转发给盒子 8080/v1/keyevent 系统服务**，失败再走 root / 无障碍 / 应用内投递 / 注入。成功返回 `{ok:true, path}`，失败返回 `{ok:false, error}`（含逐条路径原因、HTTP 状态码与 shell 输出） |
+
+> 所有 JSON 响应均为 HTTP 200，成功与否一律看 body 的 `ok` 字段（密码错误时 `ok:false, error:"密码错误"`）。
 
 `GET /api/status` 关键字段：
 
@@ -246,6 +295,9 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | `foreground` / `foregroundName` | 前台应用包名 / 显示名；**锁屏期间为「锁屏前的应用」**（被暂停在后台那个） |
 | `foregroundPreLock` | `true` 表示当前 `foreground` 是锁屏前的应用 |
 | `tempUnlocked` | 是否处于临时解锁状态（前端据此切换「临时解锁 / 清除临时解锁」按钮文案） |
+| `version` | v1.4.2 起：安装包版本名（由 `pubspec.yaml` 驱动，配置页 / 遥控器页展示） |
+| `accessibility` | v1.4.3：无障碍服务是否已开启；仅当 8080 服务不可用时，遥控器页据此显示「去开启」提示条 |
+| `bridge` / `bridgeDetail` | 盒子系统遥控服务（8080）是否可用 / 可读状态（如 `已连接 127.0.0.1:8080`）；遥控器页顶部状态条据此显示并提供「重新检测」 |
 
 配置 JSON 示例：
 
@@ -287,6 +339,7 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | 现象 | 排查 |
 |---|---|
 | 浏览器打不开 | 确认电脑 / 手机与盒子同网段；端口被占用可改成 8081 后保存 |
+| Web 端口能不能设成 8080 | **不能**。8080 是盒子系统遥控服务的端口，遥控器桥接要复用它；被 KidLock 自己占用后桥接会连到自己身上导致按键失效。Web 端口用 9090（默认）或 8081 等其它端口 |
 | 到点没锁住 | 看 App 首页「守护中」徽标；`adb shell dumpsys activity services com.kidlock.app` |
 | 杀不掉播放器 | 授权 `GET_USAGE_STATS`；部分系统级播放器可改为开启「到点黑屏锁屏」 |
 | 按序列没解锁 | 需 3 秒内按完；确认 Web 控制台点「查看」（输入密码）后两组序列与实际按键一致（遥控器方向键 / 手机音量键都可） |
@@ -296,3 +349,9 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | 打开 App 就要求验证 | 正常：冷启动必须验证家长序列；离开超过 3 分钟再回来也会要求，避免孩子自己打开改配置 |
 | 卸载不了 | 先「设置 → 安全 → 设备管理器」取消激活，或 `adb shell dpm remove-active-admin com.kidlock.app/.KidDeviceAdmin` |
 | 遥控器在主界面不听使唤 | 用方向键 + 确认键导航；密码 / 端口输入框需要外接键盘，或改用 Web 配置 |
+| 遥控器按键没反应 | ① 确认管理密码正确；② 看**页面顶部状态条**：显示「盒子系统遥控服务已连接」说明走的是 8080 系统服务（最可靠）；显示「未检测到」时点「重新检测」，或先用手机端「N1 遥控器」App 验证盒子 8080 服务是否活着；③ 看状态栏返回的**具体路径原因**；④ 锁屏页 / 家长验证页显示时按键会被它们吞掉（属预期，可用来输解锁序列）；⑤ 设为 Device Owner / 系统应用后重试 |
+| 返回键失效 / 提示「按键注入失败」，但 `adb shell input keyevent 4` 可以 | 根本原因是**应用 UID 没有 `INJECT_EVENTS`**，构造事件的方式再讲究也过不了权限检查（adb shell 是 shell UID）。现已改为**优先复用盒子自带的 `POST 8080/v1/keyevent` 系统遥控服务**（与手机端 N1 遥控器同一个接口，由系统身份执行），装完即可用；盒子上没有这个服务时才自动回退到 root `su -c "input keyevent 4"` 或无障碍 `GLOBAL_ACTION_BACK`。页面会列出每条路径的报错，据此判断是服务未就绪、没 root 还是没开无障碍 |
+| 页面顶部显示「未检测到盒子系统遥控服务(8080)」 | 说明盒子固件没有提供该服务（非 N1 / YYF 类系统）。点「重新检测」可排除服务晚启动的情况；确实没有时会自动回退到 root / 无障碍方案，或把 APK 装到 `/system/priv-app`、用平台签名让应用直接持有 `INJECT_EVENTS` |
+| 不想 root 也不想开无障碍 | 只要盒子提供 8080 系统遥控服务就**什么都不用做**；否则可把 APK 装到 `/system/priv-app` 或用平台签名，或把 App 设为 Device Owner 后重试 |
+| 音量加减键在哪 | 遥控器页底部，与「返回」同一行，左「− 音量」右「＋ 音量」；直接调节系统音量，任意界面都生效 |
+| 配置页说明文字去哪了 | v1.4.2 起改为标题右侧的 **?** 按钮，点击弹出浮窗；时间段、解锁序列、安全与服务默认折叠，点标题展开 |

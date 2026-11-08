@@ -32,6 +32,11 @@
         android:name="android.software.leanback"
         android:required="false" />
 
+    <!--
+      显式允许明文 HTTP：内嵌 Web 控制台本身就是 http，且遥控器需要访问盒子本机
+      127.0.0.1:8080/v1/keyevent 系统遥控服务。targetSdk 25 默认已允许，这里写明
+      是为了兼容部分会强制收紧明文策略的国产 / 电视固件。
+    -->
     <application
         android:name=".KidLockApp"
         android:allowBackup="true"
@@ -39,7 +44,8 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="false"
-        android:theme="@style/NormalTheme">
+        android:theme="@style/NormalTheme"
+        android:usesCleartextTraffic="true">
 
         <!-- Flutter 主控台 -->
         <activity
@@ -99,6 +105,25 @@
             android:name=".MonitorService"
             android:enabled="true"
             android:exported="false" />
+
+        <!--
+          v1.4.3：无 root 设备上让 Web 遥控器的「返回」生效。
+          由系统代为执行 performGlobalAction(GLOBAL_ACTION_BACK)，不需要 INJECT_EVENTS。
+          需用户在 设置 → 无障碍 中手动开启一次；未开启时自动回退到 root / 注入路径。
+        -->
+        <service
+            android:name=".KidLockAccessibilityService"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <!-- 开机 / 升级 / 时间变更 后拉起服务 -->
         <receiver

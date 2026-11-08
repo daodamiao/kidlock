@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅用于让 Web 遥控器的「返回」通过 performGlobalAction(GLOBAL_ACTION_BACK) 生效。
+  不读取窗口内容、不执行手势、不监听任何按键；事件回调里一律忽略。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_desc"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="1000"
+    android:canRetrieveWindowContent="false"
+    android:canPerformGestures="false" />

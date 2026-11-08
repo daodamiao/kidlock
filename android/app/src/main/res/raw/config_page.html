@@ -47,6 +47,34 @@
   td { padding:3px 0; }
   td:first-child { color:var(--dim); width:130px; }
 
+  /* ---------- v1.4.2：卡片标题 / 说明问号浮窗 / 默认折叠 ---------- */
+  .ver { color:var(--acc); font-weight:600; }
+  .card-head { display:flex; align-items:center; gap:8px; }
+  .card.collapsible .card-head { cursor:pointer; user-select:none; }
+  .card-head h3 { margin:0; font-size:16px; flex:1; }
+  .card-body { margin-top:12px; }
+  .card.collapsed .card-body { display:none; }
+  .chev { color:var(--dim); font-size:13px; transition:transform .2s; }
+  .card.collapsed .chev { transform:rotate(-90deg); }
+  .help-btn { display:inline-flex; align-items:center; justify-content:center;
+              width:22px; height:22px; flex:0 0 22px; border-radius:50%;
+              border:1px solid var(--line); color:var(--dim); font-size:13px;
+              font-weight:700; cursor:pointer; line-height:1; }
+  .help-btn:hover, .help-btn:active { color:var(--acc); border-color:var(--acc); }
+  .remote-btn { display:block; text-align:center; text-decoration:none;
+                background:var(--acc); color:#fff; border-radius:10px;
+                padding:11px 14px; font-size:15px; font-weight:600; }
+  .remote-btn:active { background:#3687e0; }
+  .help-mask { position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:100;
+               display:flex; align-items:center; justify-content:center; padding:16px; }
+  .help-mask[hidden] { display:none; }
+  .help-dialog { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                 padding:18px; width:100%; max-width:420px; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .help-dialog h3 { margin:0 0 10px; font-size:17px; }
+  .help-dialog p { margin:0 0 10px; font-size:14px; color:var(--dim); line-height:1.75; }
+  .help-dialog p b { color:var(--text); font-weight:600; }
+  .help-dialog button { width:100%; margin-top:4px; }
+
   /* ---------- 密码验证弹窗 ---------- */
   .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex;
                 align-items:center; justify-content:center; z-index:99; padding:16px; }
@@ -82,6 +110,9 @@
     td { padding:3px 0; word-break:break-word; }
     td:first-child { width:86px; }
     .modal { max-width:100%; }
+    .remote-btn { width:100%; min-height:44px; font-size:15px; }
+    .help-dialog { max-width:100%; }
+    .card-head h3 { font-size:15.5px; }
     #msg, .hint { font-size:12.5px; }
   }
 </style>
@@ -89,124 +120,133 @@
 <body>
 <div class="wrap">
   <h1>儿童限时管控</h1>
-  <div class="sub">同一局域网的电脑 / 手机即可配置，保存后立即生效（盒子端 App 与锁屏不受网络影响）</div>
+  <div class="sub">同一局域网的电脑 / 手机即可配置，保存后立即生效（盒子端 App 与锁屏不受网络影响） &nbsp;<span class="ver" id="ver">v1.4.5</span></div>
 
   <div class="card">
-    <h3>当前状态</h3>
-    <div class="status" id="status">读取中…</div>
+    <div class="card-head"><h3>当前状态</h3><span class="help-btn" data-help="status" title="说明">?</span></div>
+    <div class="card-body"><div class="status" id="status">读取中…</div></div>
   </div>
 
   <div class="card">
-    <h3>当前画面</h3>
-    <div class="row">
-      <button class="ghost" id="showShot">查看当前画面截图</button>
-      <button class="ghost small" id="refreshShot" style="display:none">刷新</button>
-    </div>
-    <div class="hint">无需密码。首次使用会在电视上弹出一次「截屏授权」，用遥控器点「允许」即可；此后可直接查看。</div>
-    <div id="shotMsg" class="hint" style="margin-top:8px"></div>
-    <div id="shotBox" style="display:none;margin-top:10px">
-      <img id="shotImg" alt="设备当前画面"
-           style="width:100%;border-radius:10px;border:1px solid var(--line);display:block">
-      <div class="hint" id="shotTime" style="margin-top:6px"></div>
-    </div>
+    <div class="card-head"><h3>遥控器</h3><span class="help-btn" data-help="remote" title="说明">?</span></div>
+    <div class="card-body"><a id="openRemote" class="remote-btn" href="/remote">打开遥控器</a></div>
   </div>
 
   <div class="card">
-    <h3>基本设置</h3>
-    <div class="row">
-      <label><input type="checkbox" id="enabled"> 启用管控</label>
-      <label>模式
-        <select id="mode">
-          <option value="OPEN">开放时间段（时段内可看，时段外锁定）</option>
-          <option value="BLOCK">禁用时间段（仅时段内锁定）</option>
-        </select>
-      </label>
-    </div>
-    <div class="hint">跨零点：把结束时间填得比开始时间小即可（例如 22:00 → 01:00）。</div>
-  </div>
-
-  <div class="card">
-    <h3>时间段（支持多段 + 按星期重复）</h3>
-    <div id="segments"></div>
-    <button class="ghost" id="addSeg">+ 添加时间段</button>
-  </div>
-
-  <div class="card">
-    <h3>解锁序列（默认隐藏）</h3>
-    <div class="hint" style="margin-bottom:6px">
-      任意一组序列命中即可解锁。安全起见，打开页面时<b>不显示已配置的序列</b>，
-      点击「查看」并输入当前密码后才可见 / 可编辑。
-    </div>
-
-    <div class="seg">
-      <div class="row" style="margin:0">
-        <b>序列 1 · 电视遥控器</b>
-        <span class="hint" id="seq1info"></span>
-      </div>
-      <div class="keys" id="keys"></div>
-    </div>
-
-    <div class="seg">
-      <div class="row" style="margin:0">
-        <b>序列 2 · 手机音量键</b>
-        <span class="hint" id="seq2info"></span>
-      </div>
-      <div class="keys" id="keys2"></div>
-    </div>
-
-    <div class="row">
-      <button class="ghost" id="presetKey">恢复默认（遥控器 ↑↑↓↓←←→→ / 手机 音量+音量+音量-音量-）</button>
-    </div>
-
-    <div id="editArea" style="display:none">
-      <div class="hint" style="margin:10px 0 4px">
-        录入目标：
-        <label><input type="radio" name="seqTarget" value="1" checked> 序列 1（遥控器）</label>
-        <label><input type="radio" name="seqTarget" value="2"> 序列 2（手机音量键）</label>
-      </div>
-      <div class="hint">点击下方虚拟按键依次录入；手机用音量键，电视遥控器用方向键。</div>
-      <div class="pad" id="pad"></div>
+    <div class="card-head"><h3>当前画面</h3><span class="help-btn" data-help="shot" title="说明">?</span></div>
+    <div class="card-body">
       <div class="row">
-        <button class="ghost" id="delLast">删最后一步</button>
-        <button class="ghost" id="clearKey">清空当前序列</button>
+        <button class="ghost" id="showShot">查看当前画面截图</button>
+        <button class="ghost small" id="refreshShot" style="display:none">刷新</button>
+      </div>
+      <div id="shotMsg" class="hint" style="margin-top:8px"></div>
+      <div id="shotBox" style="display:none;margin-top:10px">
+        <img id="shotImg" alt="设备当前画面"
+             style="width:100%;border-radius:10px;border:1px solid var(--line);display:block">
+        <div class="hint" id="shotTime" style="margin-top:6px"></div>
       </div>
     </div>
-
-    <div class="row">
-      <label>单次解锁时长（分钟）<input type="number" id="singleUnlockMinutes" min="1" max="1440"></label>
-    </div>
-    <div class="hint">单次解锁只在本段锁定内有效，到下一个禁用时间点会自动重新锁定；锁屏页与 App 验证页都不会显示序列，请家长自行牢记。</div>
   </div>
 
   <div class="card">
-    <h3>安全与服务</h3>
-    <div class="row">
-      <label>管理密码<input type="text" id="password" placeholder="留空表示不修改"></label>
-      <label>Web 端口<input type="number" id="port" min="1024" max="65535" placeholder="默认 9090"></label>
+    <div class="card-head"><h3>基本设置</h3><span class="help-btn" data-help="basic" title="说明">?</span></div>
+    <div class="card-body">
+      <div class="row">
+        <label><input type="checkbox" id="enabled"> 启用管控</label>
+        <label>模式
+          <select id="mode">
+            <option value="OPEN">开放时间段（时段内可看，时段外锁定）</option>
+            <option value="BLOCK">禁用时间段（仅时段内锁定）</option>
+          </select>
+        </label>
+      </div>
     </div>
-    <div class="hint">配置已自动加载。安全起见，打开页面时不显示现有密码，留空保存即保持原密码不变。<br>
-      端口不能用 <b>6666</b>（Chrome 等浏览器会按“不安全端口”直接拒绝连接），也不建议 8080（常与盒子系统服务冲突），默认已改为 <b>9090</b>；改端口后需用新端口重新访问。</div>
-    <div class="row">
-      <label><input type="checkbox" id="forceStop"> 到点强制停止前台应用</label>
-      <label><input type="checkbox" id="lockNow"> 到点同时黑屏锁屏（需设备管理器）</label>
+  </div>
+
+  <div class="card collapsible collapsed">
+    <div class="card-head"><h3>时间段（支持多段 + 按星期重复）</h3><span class="chev">▾</span><span class="help-btn" data-help="segments" title="说明">?</span></div>
+    <div class="card-body">
+      <div id="segments"></div>
+      <button class="ghost" id="addSeg">+ 添加时间段</button>
+    </div>
+  </div>
+
+  <div class="card collapsible collapsed">
+    <div class="card-head"><h3>解锁序列（默认隐藏）</h3><span class="chev">▾</span><span class="help-btn" data-help="keys" title="说明">?</span></div>
+    <div class="card-body">
+      <div class="seg">
+        <div class="row" style="margin:0">
+          <b>序列 1 · 电视遥控器</b>
+          <span class="hint" id="seq1info"></span>
+        </div>
+        <div class="keys" id="keys"></div>
+      </div>
+
+      <div class="seg">
+        <div class="row" style="margin:0">
+          <b>序列 2 · 手机音量键</b>
+          <span class="hint" id="seq2info"></span>
+        </div>
+        <div class="keys" id="keys2"></div>
+      </div>
+
+      <div class="row">
+        <button class="ghost" id="presetKey">恢复默认（遥控器 ↑↑↓↓←←→→ / 手机 音量+音量+音量-音量-）</button>
+      </div>
+
+      <div id="editArea" style="display:none">
+        <div class="row" style="margin:10px 0 4px">
+          录入目标：
+          <label><input type="radio" name="seqTarget" value="1" checked> 序列 1（遥控器）</label>
+          <label><input type="radio" name="seqTarget" value="2"> 序列 2（手机音量键）</label>
+        </div>
+        <div class="pad" id="pad"></div>
+        <div class="row">
+          <button class="ghost" id="delLast">删最后一步</button>
+          <button class="ghost" id="clearKey">清空当前序列</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label>单次解锁时长（分钟）<input type="number" id="singleUnlockMinutes" min="1" max="1440"></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card collapsible collapsed">
+    <div class="card-head"><h3>安全与服务</h3><span class="chev">▾</span><span class="help-btn" data-help="security" title="说明">?</span></div>
+    <div class="card-body">
+      <div class="row">
+        <label>管理密码<input type="text" id="password" placeholder="留空表示不修改"></label>
+        <label>Web 端口<input type="number" id="port" min="1024" max="65535" placeholder="默认 9090"></label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="forceStop"> 到点强制停止前台应用</label>
+        <label><input type="checkbox" id="lockNow"> 到点同时黑屏锁屏（需设备管理器）</label>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <h3>保存与操作</h3>
-    <div class="row">
-      <button id="save">保存并立即生效</button>
-      <button class="ghost" id="toggleUnlock">立即临时解锁</button>
-      <button class="danger" id="lock">立即锁定</button>
-      <button class="ghost" id="restartWeb">重启 Web 服务</button>
-      <button class="ghost" id="backupNow">立即备份配置</button>
+    <div class="card-head"><h3>保存与操作</h3><span class="help-btn" data-help="actions" title="说明">?</span></div>
+    <div class="card-body">
+      <div class="row">
+        <button id="save">保存并立即生效</button>
+        <button class="ghost" id="toggleUnlock">立即临时解锁</button>
+        <button class="danger" id="lock">立即锁定</button>
+        <button class="ghost" id="restartWeb">重启 Web 服务</button>
+        <button class="ghost" id="backupNow">立即备份配置</button>
+      </div>
+      <div id="msg"></div>
     </div>
-    <div id="msg"></div>
-    <div class="hint" style="margin-top:8px">
-      打开页面已自动读取当前配置，<b>无需密码</b>；但点击「保存并立即生效」「查看序列」或任一操作按钮时，
-      会弹出密码验证框，输入当前管理密码即可。<br>
-      若要修改管理密码：在「安全与服务」里的“管理密码”填写新值并保存（<b>留空表示不修改</b>）。
-    </div>
+  </div>
+</div>
+
+<div class="help-mask" id="helpMask" hidden>
+  <div class="help-dialog">
+    <h3 id="helpTitle"></h3>
+    <div id="helpText"></div>
+    <button id="helpClose">知道了</button>
   </div>
 </div>
 
@@ -217,6 +257,52 @@ var cfg = null;
 var keysRevealed = false;   // 是否已输入密码查看序列
 var isUnlocked = false;     // 当前是否处于临时解锁状态（由 /api/status 更新）
 var pwdCache = '';          // 本次会话最近一次验证成功的密码，用于弹窗预填
+
+/* ---------------- v1.4.2：说明浮窗（标题右侧 ? 点击查看） ---------------- */
+var HELP = {
+  status: ['当前状态',
+    '<p>展示盒子的锁定状态、<b>按星期分组</b>的生效时间段、临时解锁截止时间、下次状态变化、锁屏是否在显示、锁屏前的应用、守护服务 / Web 服务 / 设备管理器 / 配置备份与访问地址。</p>' +
+    '<p>该区域每 <b>10 秒</b> 自动刷新，无需手动操作。</p>'],
+  remote: ['遥控器（v1.4.2 新增 / 系统服务桥接）',
+    '<p>点击「打开遥控器」进入<b>单独的全屏遥控器界面</b>，可远程发送 <b>上 / 下 / 左 / 右 / 确认(OK) / 返回 / 音量− / 音量＋</b> 共 8 个按键，界面左上角可随时<b>返回主界面</b>。</p>' +
+    '<p><b>按键如何生效</b>：优先交给盒子自带的<b>系统遥控服务</b>（8080 端口的 <b>/v1/keyevent</b> 接口，与手机端「N1 遥控器」App 用的是同一个），由系统身份执行，所以方向键、OK、返回在第三方应用界面里也能生效。<b>音量键</b>直接调节系统音量，任意界面都生效。</p>' +
+    '<p>普通应用没有系统注入权限（<b>INJECT_EVENTS</b>），这是以前返回键失效的根本原因。若盒子上没有 8080 系统服务，会依次回退到 <b>root 身份</b>执行 <b>input keyevent</b>、以及<b>无障碍全局返回</b>（在遥控器页点「去开启」，到电视的<b>设置→无障碍</b>打开「儿童限时管控」）。遥控器页顶部状态条可点「重新检测」确认 8080 服务是否就绪。</p>' +
+    '<p>发送成功后状态栏显示实际生效路径，失败会显示每条路径的具体原因。</p>' +
+    '<p>发送按键需要管理密码，首次打开时验证一次即可（同一浏览会话内有效，若本页已验证过密码会自动带上）。</p>' +
+    '<p>盒子的全屏锁屏页或家长验证页显示时，按键会被它们接收，也可以用来输入解锁序列。</p>'],
+  shot: ['当前画面',
+    '<p><b>无需密码</b>即可查看盒子当前画面。首次使用会在电视上弹出一次「截屏授权」，用遥控器点「允许」即可，此后可直接查看。</p>' +
+    '<p>「查看当前画面截图」获取画面，「刷新」重新截图；授权窗口弹出期间服务会暂缓抢占前台，避免把授权框顶掉。</p>'],
+  basic: ['基本设置',
+    '<p><b>启用管控</b>：总开关，关闭后所有规则不再生效。</p>' +
+    '<p><b>开放时间段</b>：时段内允许观看，时段外锁定；<b>禁用时间段</b>：仅在时段内锁定。</p>' +
+    '<p>跨零点时直接把结束时间填得比开始时间小即可（例如 <b>22:00 → 01:00</b>），系统自动按次日处理。</p>'],
+  segments: ['时间段',
+    '<p>可添加多段时间，每段<b>独立勾选星期</b>（顺序为周日 → 周六）。</p>' +
+    '<p>开始与结束填相同时间表示<b>全天</b>；结束时间小于开始时间表示<b>跨零点</b>。</p>' +
+    '<p>修改后点击「保存并立即生效」，服务会在 15 秒内应用新规则。</p>'],
+  keys: ['解锁序列（两组并行）',
+    '<p>支持两组序列：<b>序列 1 电视遥控器方向键</b>、<b>序列 2 手机音量键</b>，任意一组命中即可解锁。</p>' +
+    '<p>安全起见打开页面时<b>不显示已配置的序列</b>，点「查看」并输入当前密码后才可见 / 可编辑；用下方虚拟按键依次录入，可删最后一步、清空当前序列或恢复默认。</p>' +
+    '<p><b>单次解锁</b>只在本段锁定内有效，到下一个禁用时间点会自动重新锁定；锁屏页与家长验证页都不显示序列，请家长自行牢记。</p>'],
+  security: ['安全与服务',
+    '<p><b>管理密码</b>：留空表示不修改；打开页面不会回显现有密码。</p>' +
+    '<p><b>Web 端口</b>：默认 <b>9090</b>。不能用 <b>6666</b>（Chrome 等浏览器按“不安全端口”直接拒绝连接），也不建议 8080（常与盒子系统服务冲突）；改端口后需用新端口重新访问。</p>' +
+    '<p><b>到点强制停止前台应用</b>：锁定前暂停播放、静音并结束正在播放的进程；<b>到点同时黑屏锁屏</b>：需先激活设备管理器。</p>'],
+  actions: ['保存与操作',
+    '<p>打开页面已自动读取当前配置，<b>无需密码</b>；但「保存并立即生效」「查看序列」及任一操作按钮都会弹出密码验证框。</p>' +
+    '<p>临时解锁按钮会按当前状态在<b>「立即临时解锁 / 清除临时解锁」</b>之间切换；另有立即锁定、重启 Web 服务、立即备份配置。</p>' +
+    '<p>若要修改管理密码：在「安全与服务」里填写新值并保存（<b>留空表示不修改</b>）。</p>']
+};
+
+function showHelp(k){
+  var h = HELP[k];
+  if(!h) return;
+  $('helpTitle').textContent = h[0];
+  $('helpText').innerHTML = h[1];
+  $('helpMask').hidden = false;
+}
+function closeHelp(){ $('helpMask').hidden = true; }
 
 var KEY_NAMES = {
   19:'↑ 上', 20:'↓ 下', 21:'← 左', 22:'→ 右', 23:'OK 确认',
@@ -290,6 +376,7 @@ function askPassword(title){
 function loadStatus(){
   api('/api/status').then(function(s){
     if(!s.ok){ $('status').textContent = '状态读取失败'; return; }
+    if(s.version) $('ver').textContent = 'v' + s.version;
     var locked = s.locked;
     var urls = (s.ips || []).map(function(ip){ return 'http://' + ip + ':' + s.port; }).join('  ');
     // 生效时间段：服务端按星期分组，多组之间用换行分隔，这里转成换行展示
@@ -648,6 +735,27 @@ function action(a, label){
 }
 
 (function init(){
+  // v1.4.2：问号说明浮窗（用 addEventListener，避免覆盖密码弹窗的 Esc 监听）
+  document.querySelectorAll('.help-btn').forEach(function(el){
+    el.onclick = function(ev){
+      if(ev.stopPropagation) ev.stopPropagation();
+      showHelp(el.getAttribute('data-help'));
+    };
+  });
+  $('helpClose').onclick = closeHelp;
+  $('helpMask').onclick = function(ev){ if(ev.target === $('helpMask')) closeHelp(); };
+  document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape') closeHelp(); });
+
+  // v1.4.2：长功能项默认折叠，点击标题展开 / 收起
+  document.querySelectorAll('.card.collapsible .card-head').forEach(function(head){
+    head.onclick = function(){ head.parentNode.classList.toggle('collapsed'); };
+  });
+
+  // v1.4.2：进入遥控器前把已验证的密码交给新页面，免重复输入
+  $('openRemote').onclick = function(){
+    if(pwdCache){ try { sessionStorage.setItem('kidlock_pwd', pwdCache); } catch(e){} }
+  };
+
   $('addSeg').onclick = function(){
     cfg.segments.push({ start: 18*60, end: 20*60, days: [1,1,1,1,1,1,1] });
     renderSegments();
