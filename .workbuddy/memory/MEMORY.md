@@ -8,8 +8,8 @@
 - UI：Flutter (Dart) `lib/`；原生能力：Kotlin `android/app/src/main/kotlin/com/kidlock/app/`
 - 零第三方运行时依赖；Web 控制台为自写 ServerSocket HTTP 服务 + 单文件内联 HTML/ES5 JS
 - minSdk 24 / targetSdk 25 / 仅 arm64-v8a；版本由 `pubspec.yaml` 驱动（versionCode/versionName 自动传给 Gradle，勿手改 build.gradle.kts）
-- 当前版本：**v1.4.4**（`1.4.4+9`，用户手动升版；发布包 `app-release-v1.4.4.apk`；v1.4.4 为无障碍配置编译修复版，功能同 v1.4.3）
-- **工作区另有未定版本号的遥控器修订**：新增 `N1KeyBridge.kt`，按键优先复用盒子 8080 系统遥控服务（见下）。版本号由用户手动管理，勿擅自改 `pubspec.yaml` / `build_task.bat`
+- 当前版本：**v1.4.5**（`1.4.5+10`，用户手动升版；发布包 `app-release-v1.4.5.apk`；v1.4.5 为遥控器按键通道修复版，改用盒子 8080 系统遥控服务）
+- 版本号由用户手动管理，勿擅自改 `pubspec.yaml` / `build_task.bat`；升版后需同步：两页 HTML 版本徽标、README 当前版本块、发布说明（标题 / 概览 / 兼容范围 / ADB 示例 / 发布包名 / 新增更新日志章节并顺延后续章节）、使用教程页脚、本文件
 
 ## Web 权限模型（重要）
 - 所有 JSON 响应恒为 **HTTP 200**，成功与否一律看 body 的 `ok` 字段；密码错误为 `ok:false, error:"密码错误"`
@@ -18,7 +18,7 @@
 - 前端无常驻密码输入框，写操作统一走 `askPassword()` 弹窗；`pwdCache` 只用于弹窗预填
 
 ## 版本线
-v1.2 → v1.3（家长门禁 GateActivity + 双序列：遥控器方向键 / 手机音量键）→ v1.3.1（端口 6666→9090，避开浏览器不安全端口黑名单）→ v1.4.0（IPTV 锁屏静音三重兜底）→ v1.4.1（Web 移动端适配 + MediaProjection 免密截图 + 配置外置备份）→ v1.4.2（全屏 Web 遥控器 + 配置页 ? 浮窗 / 长卡片折叠）→ v1.4.3（返回键失效修复：root `su` 注入 / 无障碍全局返回；新增音量 ± 与逐路径报错）→ v1.4.4（编译修复：删除无障碍配置里非法的 `android:flags`）→ **未定版本号修订**（参考 Jimmuy/N1_controler，遥控器改为优先复用盒子 8080 系统遥控服务，N1/YYF 固件零配置可用）
+v1.2 → v1.3（家长门禁 GateActivity + 双序列：遥控器方向键 / 手机音量键）→ v1.3.1（端口 6666→9090，避开浏览器不安全端口黑名单）→ v1.4.0（IPTV 锁屏静音三重兜底）→ v1.4.1（Web 移动端适配 + MediaProjection 免密截图 + 配置外置备份）→ v1.4.2（全屏 Web 遥控器 + 配置页 ? 浮窗 / 长卡片折叠）→ v1.4.3（返回键失效修复：root `su` 注入 / 无障碍全局返回；新增音量 ± 与逐路径报错）→ v1.4.4（编译修复：删除无障碍配置里非法的 `android:flags`）→ v1.4.5（参考 Jimmuy/N1_controler，遥控器改为优先复用盒子 8080 系统遥控服务，N1/YYF 固件零配置可用；新增状态条与 reprobeBridge）
 
 ## 关键约定
 - **改完代码不编译**，用户自行在 VSCode 终端跑 `build_task.bat` 或 `flutter build apk --release --target-platform android-arm64`
