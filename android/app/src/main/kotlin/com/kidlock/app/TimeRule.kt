@@ -28,11 +28,11 @@ object TimeRule {
         val minute = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         val dow = cal.get(Calendar.DAY_OF_WEEK) - 1 // Calendar.SUNDAY = 1 -> 0
 
-        // 1) 今天生效的段
+        // 1) 今天生效的段（只判定「今天这一段」，跨零点的后半段不在这里处理）
         for (s in cfg.segments) {
-            if (s.days[dow] && covers(s, minute)) return true
+            if (s.days[dow] && coversToday(s, minute)) return true
         }
-        // 2) 昨天生效且跨零点的段（周日 22:00 -> 01:00，周一 00:30 仍算命中）
+        // 2) 昨天生效且跨零点的段（周六 20:00 -> 次日 09:30，周日 00:30 仍算命中）
         val prevDow = (dow + 6) % 7
         for (s in cfg.segments) {
             if (s.days[prevDow] && s.start > s.end && minute < s.end) return true
@@ -40,10 +40,19 @@ object TimeRule {
         return false
     }
 
-    private fun covers(s: Segment, minute: Int): Boolean {
+    /**
+     * 判定「生效日当天」是否落在该段内。
+     *
+     * 跨零点段（如 20:00-次日09:30）在生效日当天**只覆盖 20:00~24:00**；
+     * 次日 00:00~09:30 由 inAnySegment() 的 prevDow 分支处理。
+     * 旧实现写成 `minute >= start || minute < end`，会让生效日当天的
+     * 00:00~09:30 也被算成开放，等于把「明天凌晨」错误地提前到「今天凌晨」，
+     * 造成周末早上本该锁定却显示未锁定。
+     */
+    private fun coversToday(s: Segment, minute: Int): Boolean {
         if (s.start == s.end) return true                       // 起止相同视为全天
         if (s.start < s.end) return minute >= s.start && minute < s.end
-        return minute >= s.start || minute < s.end              // 跨零点
+        return minute >= s.start                                // 跨零点：当日只覆盖 start 之后
     }
 
     /** 未来 8 天内所有翻转点（各段起止），升序 */

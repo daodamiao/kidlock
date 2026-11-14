@@ -93,6 +93,14 @@ class _HomePageState extends State<HomePage> {
 
   Widget _statusCard(KidStatus s) {
     final locked = s.locked;
+    // 手动锁定生效时，状态徽标与状态行都要明确显示「手动锁定中」，
+    // 不能只显示「已锁定」，否则看不出定时规则正被覆盖
+    final manual = s.manualLock && !s.tempUnlocked;
+    final manualText = !manual
+        ? '无'
+        : (s.manualLockUntilText.isEmpty || s.manualLockUntilText == '--'
+            ? '手动锁定中（需手动解除）'
+            : '手动锁定中（${s.manualLockUntilText} 自动恢复）');
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -111,7 +119,8 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
               ),
               const SizedBox(width: 16),
-              _badge(locked ? '已锁定' : '未锁定', locked ? const Color(0xFFFF7A5A) : const Color(0xFF37C26B)),
+              _badge(manual ? '手动锁定中' : (locked ? '已锁定' : '未锁定'),
+                  manual ? const Color(0xFFC9523F) : (locked ? const Color(0xFFFF7A5A) : const Color(0xFF37C26B))),
               const SizedBox(width: 12),
               _badge(s.serviceRunning ? '守护中' : '未守护',
                   s.serviceRunning ? const Color(0xFF37C26B) : const Color(0xFFFF7A5A)),
@@ -122,6 +131,7 @@ class _HomePageState extends State<HomePage> {
           _infoRow('管控模式', '${s.mode == LockConfig.modeBlock ? '禁用时间段' : '开放时间段'}（${s.enabled ? '已启用' : '已停用'}）'),
           _infoRow('生效时间段', s.segmentsText),
           _infoRow('临时解锁至', s.unlockUntil > 0 ? s.unlockUntilText : '无'),
+          _infoRow('手动锁定', manualText),
           _infoRow('下次状态变化', s.nextTransitionText),
           _infoRow('锁屏显示中', s.lockVisible ? '是' : '否'),
           // 锁屏期间显示「锁屏前的应用」——它只是被暂停在后台，界面并未切换
@@ -139,6 +149,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _actions(KidStatus s) {
+    // 与状态卡片保持同一判定，保证徽标显示「手动锁定中」时，
+    // 「立即锁定」按钮本身已经切换成「解除手动锁定」
+    final manual = s.manualLock && !s.tempUnlocked;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -149,10 +162,21 @@ class _HomePageState extends State<HomePage> {
           );
           await _refresh();
         }),
-        _btn('立即锁定', const Color(0xFFC9523F), () => _run('立即锁定', Bridge.lockNow)),
-        // 合并为一个按钮：未解锁显示「立即临时解锁」，已解锁显示「清除临时解锁」
+        // 手动锁定按钮双态：未生效时「立即锁定」，生效时按钮本身变成「解除手动锁定」
         _btn(
-          s.tempUnlocked ? '清除临时解锁' : '立即临时解锁 ${s.singleUnlockMinutes} 分钟',
+          manual ? '解除手动锁定' : '立即锁定',
+          manual ? const Color(0xFF263041) : const Color(0xFFC9523F),
+          () => _run(
+            manual ? '解除手动锁定' : '立即锁定',
+            manual ? Bridge.clearUnlock : Bridge.lockNow,
+          ),
+        ),
+        // 临时解锁按钮两态：立即临时解锁 / 清除临时解锁
+        // 手动锁定会在下一个时段翻转点自动失效，无需占用此按钮
+        _btn(
+          s.tempUnlocked
+              ? '清除临时解锁'
+              : '立即临时解锁 ${s.singleUnlockMinutes} 分钟',
           s.tempUnlocked ? const Color(0xFF263041) : const Color(0xFF37C26B),
           () => _run(
             s.tempUnlocked ? '清除临时解锁' : '临时解锁',

@@ -47,3 +47,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# WorkBuddy 本地工作数据（项目记忆 / 临时校验脚本等），不纳入版本控制
+# 注意：若此前已提交过，需执行一次 git rm -r --cached .workbuddy/ 才会停止跟踪
+.workbuddy/

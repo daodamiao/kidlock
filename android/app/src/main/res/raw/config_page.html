@@ -256,6 +256,7 @@ var cfg = null;
 
 var keysRevealed = false;   // 是否已输入密码查看序列
 var isUnlocked = false;     // 当前是否处于临时解锁状态（由 /api/status 更新）
+var isManualLocked = false; // 当前是否处于手动锁定且未临时解锁（由 /api/status 更新）
 var pwdCache = '';          // 本次会话最近一次验证成功的密码，用于弹窗预填
 
 /* ---------------- v1.4.2：说明浮窗（标题右侧 ? 点击查看） ---------------- */
@@ -291,7 +292,9 @@ var HELP = {
     '<p><b>到点强制停止前台应用</b>：锁定前暂停播放、静音并结束正在播放的进程；<b>到点同时黑屏锁屏</b>：需先激活设备管理器。</p>'],
   actions: ['保存与操作',
     '<p>打开页面已自动读取当前配置，<b>无需密码</b>；但「保存并立即生效」「查看序列」及任一操作按钮都会弹出密码验证框。</p>' +
-    '<p>临时解锁按钮会按当前状态在<b>「立即临时解锁 / 清除临时解锁」</b>之间切换；另有立即锁定、重启 Web 服务、立即备份配置。</p>' +
+    '<p><b>临时解锁</b>按钮按当前状态在<b>「立即临时解锁 / 清除临时解锁」</b>间切换；<b>立即锁定</b>按钮在手动锁定生效时会自动变成<b>「解除手动锁定」</b>，点一下即可恢复定时规则；另有重启 Web 服务、立即备份配置。</p>' +
+    '<p><b>立即锁定</b>会临时压住定时规则，但只到<b>下一个时段翻转点</b>为止，到点自动按规则重新判定。手动锁定生效时，状态面板顶部徽标与「手动锁定」一行都会显示<b>「手动锁定中」</b>及自动恢复时间，不会因一次手动锁定让所有定时规则永久失效。</p>' +
+    '<p><b>跨零点时段</b>（如 20:00-次日09:30）表示「生效日 20:00 起、到次日 09:30 止」，<b>生效日当天凌晨不算</b>；页面显示的「下次状态变化」已计入手动锁定到期。</p>' +
     '<p>若要修改管理密码：在「安全与服务」里填写新值并保存（<b>留空表示不修改</b>）。</p>']
 };
 
@@ -378,6 +381,9 @@ function loadStatus(){
     if(!s.ok){ $('status').textContent = '状态读取失败'; return; }
     if(s.version) $('ver').textContent = 'v' + s.version;
     var locked = s.locked;
+    // 按钮状态需在拼状态表格前算好，表格里也要用来显示「手动锁定中」提示
+    isUnlocked = !!s.tempUnlocked;
+    isManualLocked = !!s.manualLock && !isUnlocked;
     var urls = (s.ips || []).map(function(ip){ return 'http://' + ip + ':' + s.port; }).join('  ');
     // 生效时间段：服务端按星期分组，多组之间用换行分隔，这里转成换行展示
     var segText = (s.segmentsText || '--').split('\n').join('<br>');
@@ -389,12 +395,16 @@ function loadStatus(){
     }
 
     $('status').innerHTML =
-      '<span class="badge ' + (locked?'on':'off') + '">' + (locked?'已锁定':'未锁定') + '</span> &nbsp;' +
+      '<span class="badge ' + (locked?'on':'off') + '">' + (isManualLocked ? '手动锁定中' : (locked?'已锁定':'未锁定')) + '</span> &nbsp;' +
       '模式：' + (s.mode === 'BLOCK' ? '禁用时间段' : '开放时间段') + '（' + (s.enabled?'已启用':'已停用') + '）<br>' +
       '<table>' +
       '<tr><td>盒子时间</td><td>' + fmt(s.now) + '</td></tr>' +
       '<tr><td>生效时间段</td><td>' + segText + '</td></tr>' +
       '<tr><td>临时解锁到</td><td>' + (s.tempUnlocked && s.unlockUntil ? fmt(s.unlockUntil) : '无') + '</td></tr>' +
+      '<tr><td>手动锁定</td><td>' + (isManualLocked ?
+        '<b style="color:#c0392b">手动锁定中（定时规则暂不生效）</b>' +
+        (s.manualLockUntilText && s.manualLockUntilText !== '--' ? '，' + esc(s.manualLockUntilText) + ' 自动恢复' : '，需手动解除') :
+        '无') + '</td></tr>' +
       '<tr><td>下次状态变化</td><td>' + (s.nextTransitionText || fmt(s.nextTransition)) + '</td></tr>' +
       '<tr><td>锁屏是否在显示</td><td>' + (s.lockVisible ? '是' : '否') + '</td></tr>' +
       '<tr><td>' + fgLabel + '</td><td>' + (fgValue || '未知') + '</td></tr>' +
@@ -406,10 +416,19 @@ function loadStatus(){
       '<tr><td>访问地址</td><td>' + (urls || '--') + '</td></tr>' +
       '</table>';
 
-    // 合并后的「临时解锁 / 清除临时解锁」按钮：按当前状态切换文案
-    isUnlocked = !!s.tempUnlocked;
+    // 手动锁定按钮本身切换：手动锁定生效时变成「解除手动锁定」
+    var lk = $('lock');
+    if (isManualLocked) {
+      lk.textContent = '解除手动锁定';
+      lk.className = 'ghost';
+    } else {
+      lk.textContent = '立即锁定';
+      lk.className = 'danger';
+    }
+    // 临时解锁按钮两态：立即临时解锁 / 清除临时解锁
     var tu = $('toggleUnlock');
     tu.textContent = isUnlocked ? '清除临时解锁' : '立即临时解锁';
+    tu.className = 'ghost';
   });
 }
 
@@ -783,7 +802,10 @@ function action(a, label){
     if (isUnlocked) action('clearUnlock', '清除临时解锁');
     else action('unlock', '立即临时解锁');
   };
-  $('lock').onclick = function(){ action('lock', '立即锁定'); };
+  $('lock').onclick = function(){
+    if (isManualLocked) action('clearUnlock', '解除手动锁定');
+    else action('lock', '立即锁定');
+  };
   $('restartWeb').onclick = function(){ action('restartWeb', '重启 Web 服务'); };
   $('backupNow').onclick = function(){ action('backup', '立即备份配置'); };
 

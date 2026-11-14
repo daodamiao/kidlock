@@ -19,6 +19,7 @@ object ConfigStore {
     private const val K_CONFIG = "config"
     private const val K_UNLOCK_UNTIL = "unlock_until"
     private const val K_MANUAL_LOCK = "manual_lock"
+    private const val K_MANUAL_LOCK_UNTIL = "manual_lock_until"
 
     private const val BACKUP_FILE = "kidlock_config.json"
     private const val PUBLIC_DIR = "KidLock"
@@ -156,11 +157,47 @@ object ConfigStore {
         prefs(c).edit().putLong(K_UNLOCK_UNTIL, ts).apply()
     }
 
-    /** Web / App 端“立即锁定”的手动锁定标记 */
-    fun getManualLock(c: Context): Boolean = prefs(c).getBoolean(K_MANUAL_LOCK, false)
+    /**
+     * 当前是否处于「有效的手动锁定」。
+     * 到期时刻已过即视为失效（持久化标记的清理由 MonitorService.evaluate() 负责），
+     * 这样 MonitorService / LockScreenActivity / statusMap 三处判定永远一致。
+     */
+    fun getManualLock(c: Context): Boolean {
+        val p = prefs(c)
+        if (!p.getBoolean(K_MANUAL_LOCK, false)) return false
+        // 升级迁移：旧版没有 manual_lock_until 这个 key，却可能残留 manual_lock=true。
+        // 那个标记会永久压住定时规则，若按「无到期 = 永久」处理，换新 APK 后问题依旧。
+        // 因此把「缺少到期字段」判定为旧版遗留，直接失效并清掉标记。
+        if (!p.contains(K_MANUAL_LOCK_UNTIL)) {
+            p.edit().putBoolean(K_MANUAL_LOCK, false).apply()
+            return false
+        }
+        val until = p.getLong(K_MANUAL_LOCK_UNTIL, 0L)
+        return until <= 0L || System.currentTimeMillis() < until
+    }
 
     fun setManualLock(c: Context, v: Boolean) {
         prefs(c).edit().putBoolean(K_MANUAL_LOCK, v).apply()
+    }
+
+    /**
+     * 手动锁定的自动失效时刻（毫秒），0 = 不自动失效。
+     * 设为「按时间规则计算的下一次时段翻转点」，避免点一次「立即锁定」
+     * 就把所有定时规则永久压住（旧版行为，用户必须手动清除才能恢复）。
+     */
+    fun getManualLockUntil(c: Context): Long = prefs(c).getLong(K_MANUAL_LOCK_UNTIL, 0L)
+
+    fun setManualLockUntil(c: Context, ts: Long) {
+        prefs(c).edit().putLong(K_MANUAL_LOCK_UNTIL, ts).apply()
+    }
+
+    /** 一次清掉所有「覆盖定时规则」的临时状态，回到纯规则判定。 */
+    fun clearOverrides(c: Context) {
+        prefs(c).edit()
+            .putLong(K_UNLOCK_UNTIL, 0L)
+            .putBoolean(K_MANUAL_LOCK, false)
+            .putLong(K_MANUAL_LOCK_UNTIL, 0L)
+            .apply()
     }
 
     // ------------------------------------------------------------ App 门禁（家长验证）

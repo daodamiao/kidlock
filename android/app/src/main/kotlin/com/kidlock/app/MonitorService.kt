@@ -75,12 +75,20 @@ class MonitorService : Service() {
             ACTION_RESTART_WEB -> restartWeb()
             ACTION_UNLOCK_ONCE -> grantSingleUnlock(this)
             ACTION_LOCK_NOW -> {
-                ConfigStore.setUnlockUntil(this, 0L)
+                val cfg = ConfigStore.load(this)
+                val now = System.currentTimeMillis()
+                ConfigStore.clearOverrides(this)
                 ConfigStore.setManualLock(this, true)
+                // 手动锁定只覆盖到「按规则计算的下一次时段翻转点」，到点自动失效，
+                // 避免点一次「立即锁定」就把定时规则永久压住。
+                // 未配置任何有效时段时不设到期，保持手动锁定直到用户主动解除。
+                val next = TimeRule.nextTransitionAfter(cfg, now, 0L)
+                ConfigStore.setManualLockUntil(this, if (next == Long.MAX_VALUE) 0L else next)
+                Log.i(TAG, "manual lock until " + TimeRule.stamp(ConfigStore.getManualLockUntil(this)))
             }
             ACTION_CLEAR_UNLOCK -> {
-                ConfigStore.setUnlockUntil(this, 0L)
-                ConfigStore.setManualLock(this, false)
+                // 同时清除临时解锁、手动锁定及其到期时间，回到纯规则判定
+                ConfigStore.clearOverrides(this)
             }
             ACTION_BACKUP -> {
                 val p = ConfigStore.backupNow(this)
@@ -122,11 +130,21 @@ class MonitorService : Service() {
         val cfg = ConfigStore.load(this)
         val now = System.currentTimeMillis()
         var unlockUntil = ConfigStore.getUnlockUntil(this)
-        val manual = ConfigStore.getManualLock(this)
+        var manual = ConfigStore.getManualLock(this)
 
         if (unlockUntil > 0L && now >= unlockUntil) {
             ConfigStore.setUnlockUntil(this, 0L)
             unlockUntil = 0L
+        }
+        // 手动锁定具有时效：走到时段翻转点即自动失效，由规则重新决定状态。
+        // 旧实现只用一个持久化布尔值且无任何自动清除路径，导致定时规则全部失效。
+        val manualUntil = ConfigStore.getManualLockUntil(this)
+        if (manualUntil > 0L && now >= manualUntil) {
+            // clearOverrides 会把到期时间归零，因此不会重复清理
+            ConfigStore.clearOverrides(this)
+            manual = false
+            unlockUntil = 0L
+            Log.i(TAG, "manual lock auto-cleared at schedule boundary")
         }
         val locked = TimeRule.isLocked(cfg, now, unlockUntil, manual)
 
@@ -400,7 +418,12 @@ class MonitorService : Service() {
     // ------------------------------------------------------------------ 定时 / 自保活
 
     private fun scheduleNext(cfg: LockConfig, now: Long, unlockUntil: Long) {
-        val next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil)
+        var next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil)
+        // 手动锁定到期也是一次必须唤醒的状态重估点
+        val manualUntil = ConfigStore.getManualLockUntil(this)
+        if (ConfigStore.getManualLock(this) && manualUntil > now && manualUntil < next) {
+            next = manualUntil
+        }
         if (next == Long.MAX_VALUE) return
         val trigger = Math.max(now + 5000L, next + 1000L)
         try {
@@ -544,8 +567,9 @@ class MonitorService : Service() {
             if (naturalUnlock < end) {
                 end = Math.max(now + 60000L, naturalUnlock)
             }
-            ConfigStore.setUnlockUntil(c, end)
+            ConfigStore.setManualLockUntil(c, 0L)
             ConfigStore.setManualLock(c, false)
+            ConfigStore.setUnlockUntil(c, end)
             act(c, ACTION_EVAL)
             Log.i(TAG, "single unlock until " + TimeRule.stamp(end))
         }
@@ -570,8 +594,12 @@ class MonitorService : Service() {
             val now = System.currentTimeMillis()
             val unlockUntil = ConfigStore.getUnlockUntil(c)
             val manual = ConfigStore.getManualLock(c)
+            val manualUntil = if (manual) ConfigStore.getManualLockUntil(c) else 0L
             val locked = TimeRule.isLocked(cfg, now, unlockUntil, manual)
-            val next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil)
+            var next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil)
+            // 手动锁定到期本身就是一次状态重估，必须纳入「下次状态变化」，
+            // 否则页面会显示一个被手动锁定压住、实际并不会发生的翻转时刻
+            if (manual && manualUntil > now && manualUntil < next) next = manualUntil
             val m = HashMap<String, Any?>()
             m["locked"] = locked
             m["enabled"] = cfg.enabled
@@ -583,6 +611,8 @@ class MonitorService : Service() {
             // 是否正处于「临时解锁」状态（前端据此切换「临时解锁 / 清除临时解锁」按钮文案）
             m["tempUnlocked"] = unlockUntil > now
             m["manualLock"] = manual
+            m["manualLockUntil"] = manualUntil
+            m["manualLockUntilText"] = TimeRule.stamp(manualUntil)
             m["nextTransition"] = if (next == Long.MAX_VALUE) 0L else next
             m["nextTransitionText"] = TimeRule.stamp(next)
             m["lockVisible"] = LockScreenActivity.isVisible()

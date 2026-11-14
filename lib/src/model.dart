@@ -155,6 +155,8 @@ class KidStatus {
   /// 是否正处于「临时解锁」状态（用于切换 临时解锁 / 清除临时解锁 按钮）
   final bool tempUnlocked;
   final bool manualLock;
+  /// 手动锁定自动恢复时刻（来自 manualLockUntilText），用于状态行展示
+  final String manualLockUntilText;
   final String nextTransitionText;
   final bool lockVisible;
   final String foreground;
@@ -181,6 +183,7 @@ class KidStatus {
     required this.unlockUntilText,
     required this.tempUnlocked,
     required this.manualLock,
+    required this.manualLockUntilText,
     required this.nextTransitionText,
     required this.lockVisible,
     required this.foreground,
@@ -206,6 +209,7 @@ class KidStatus {
         unlockUntilText: (m['unlockUntilText'] ?? '--').toString(),
         tempUnlocked: m['tempUnlocked'] == true,
         manualLock: m['manualLock'] == true,
+        manualLockUntilText: (m['manualLockUntilText'] ?? '--').toString(),
         nextTransitionText: (m['nextTransitionText'] ?? '--').toString(),
         lockVisible: m['lockVisible'] == true,
         foreground: (m['foreground'] ?? '').toString(),

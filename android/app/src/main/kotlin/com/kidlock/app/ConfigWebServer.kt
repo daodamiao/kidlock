@@ -24,7 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *  GET  /api/screen            -> 当前画面截图（JPEG，无需密码；未授权时拉起系统授权框）
  *  GET  /api/config            -> 读取配置（无需密码；序列不下发，只给步数）
  *  POST /api/config            -> 保存配置（body 为 JSON，含 pwd 字段）
- *  POST /api/action            -> {pwd, action}：showKeys / unlock / lock / clearUnlock /
+ *  POST /api/action            -> {pwd, action}：showKeys / unlock / lock /
+ *                                 clearUnlock（清除临时解锁 + 解除手动锁定）/
  *                                 restartWeb / backup / eval / openAccessibility（跳系统无障碍设置）/
  *                                 reprobeBridge（重新探测盒子系统遥控服务 8080）
  *  POST /api/auth              -> {pwd} 仅校验管理密码（v1.4.2，遥控器页首次进入用）
