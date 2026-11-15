@@ -25,7 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *  GET  /api/config            -> 读取配置（无需密码；序列不下发，只给步数）
  *  POST /api/config            -> 保存配置（body 为 JSON，含 pwd 字段）
  *  POST /api/action            -> {pwd, action}：showKeys / unlock / lock /
- *                                 clearUnlock（清除临时解锁 + 解除手动锁定）/
+ *                                 clearUnlock（清除全部覆盖状态）/
+ *                                 unlockDay（当日解锁，当天不锁定）/ cancelDayUnlock（恢复规则）/
  *                                 restartWeb / backup / eval / openAccessibility（跳系统无障碍设置）/
  *                                 reprobeBridge（重新探测盒子系统遥控服务 8080）
  *  POST /api/auth              -> {pwd} 仅校验管理密码（v1.4.2，遥控器页首次进入用）
@@ -309,6 +310,8 @@ class ConfigWebServer(private val appContext: Context) {
                 "unlock" -> MonitorService.act(appContext, MonitorService.ACTION_UNLOCK_ONCE)
                 "lock" -> MonitorService.act(appContext, MonitorService.ACTION_LOCK_NOW)
                 "clearUnlock" -> MonitorService.act(appContext, MonitorService.ACTION_CLEAR_UNLOCK)
+                "unlockDay" -> MonitorService.act(appContext, MonitorService.ACTION_UNLOCK_DAY)
+                "cancelDayUnlock" -> MonitorService.act(appContext, MonitorService.ACTION_CANCEL_DAY_UNLOCK)
                 "restartWeb" -> MonitorService.act(appContext, MonitorService.ACTION_RESTART_WEB)
                 "backup" -> MonitorService.act(appContext, MonitorService.ACTION_BACKUP)
                 "eval" -> MonitorService.act(appContext, MonitorService.ACTION_EVAL)

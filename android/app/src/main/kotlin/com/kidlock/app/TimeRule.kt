@@ -12,13 +12,38 @@ object TimeRule {
     private const val DAY_MS = 24L * 60L * 60L * 1000L
     private const val MIN_MS = 60L * 1000L
 
-    /** 当前是否处于锁定状态 */
-    fun isLocked(cfg: LockConfig, now: Long, unlockUntil: Long, manualLock: Boolean): Boolean {
+    /**
+     * 当前是否处于锁定状态。
+     * 覆盖优先级（高 -> 低）：
+     *   当日解锁（当天不锁定） > 临时解锁（N 分钟） > 手动锁定 > 时间段规则
+     * dayUnlockUntil 默认 0，让 nextTransitionAfter / nextStateChange 等
+     * 纯规则推演仍可沿用原来的 4 参调用。
+     */
+    fun isLocked(
+        cfg: LockConfig,
+        now: Long,
+        unlockUntil: Long,
+        manualLock: Boolean,
+        dayUnlockUntil: Long = 0L
+    ): Boolean {
         if (!cfg.enabled) return false
-        if (unlockUntil > now) return false          // 单次解锁优先
+        if (dayUnlockUntil > now) return false       // 当日解锁：当天不锁定，权限最高
+        if (unlockUntil > now) return false          // 临时解锁：权限在手动锁定之上
         if (manualLock) return true                  // 手动锁定
         val inSeg = inAnySegment(cfg, now)
         return if (cfg.mode == LockConfig.MODE_BLOCK) inSeg else !inSeg
+    }
+
+    /** 本地时间次日 00:00 的时间戳 —— 「当日解锁」的到期点 */
+    fun endOfToday(now: Long): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis + DAY_MS
     }
 
     /** 当前时刻是否落在任一已启用的时间段内（含跨零点） */
@@ -85,12 +110,19 @@ object TimeRule {
         return out
     }
 
-    /** 下一次状态变化时间（含单次解锁到期），无则 Long.MAX_VALUE */
-    fun nextTransitionAfter(cfg: LockConfig, now: Long, unlockUntil: Long): Long {
+    /** 下一次状态变化时间（含单次解锁 / 当日解锁到期），无则 Long.MAX_VALUE */
+    fun nextTransitionAfter(
+        cfg: LockConfig,
+        now: Long,
+        unlockUntil: Long,
+        dayUnlockUntil: Long = 0L
+    ): Long {
         var best = Long.MAX_VALUE
         // 只有当前处于锁定态时，临时解锁到期才算一次状态切换；
         // 未锁定时它不是真正的状态变化（避免显示误导、无效闹钟）
-        if (isLocked(cfg, now, unlockUntil, false) && unlockUntil > now) best = unlockUntil
+        if (isLocked(cfg, now, unlockUntil, false, dayUnlockUntil) && unlockUntil > now) best = unlockUntil
+        // 当日解锁到期必然要重新按规则判定一次，即使此刻已是未锁定
+        if (dayUnlockUntil > now && dayUnlockUntil < best) best = dayUnlockUntil
         for (t in candidates(cfg, now)) {
             if (t > now && t < best) best = t
         }

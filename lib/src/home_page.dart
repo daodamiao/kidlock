@@ -93,14 +93,29 @@ class _HomePageState extends State<HomePage> {
 
   Widget _statusCard(KidStatus s) {
     final locked = s.locked;
-    // 手动锁定生效时，状态徽标与状态行都要明确显示「手动锁定中」，
-    // 不能只显示「已锁定」，否则看不出定时规则正被覆盖
-    final manual = s.manualLock && !s.tempUnlocked;
+    // 状态徽标按覆盖优先级显示：当日解锁 > 临时解锁 > 手动锁定 > 已锁定/未锁定。
+    // 服务端给出统一文案 stateLabel，Web / TV 两端不会出现判定分歧。
+    final label = s.stateLabel.isNotEmpty
+        ? s.stateLabel
+        : (s.dayUnlocked
+            ? '当日解锁'
+            : (s.tempUnlocked
+                ? '临时解锁'
+                : (s.manualLock
+                    ? '手动锁定中'
+                    : (locked ? '已锁定' : '未锁定'))));
+    final manual = s.manualLock && !s.tempUnlocked && !s.dayUnlocked;
     final manualText = !manual
         ? '无'
         : (s.manualLockUntilText.isEmpty || s.manualLockUntilText == '--'
             ? '手动锁定中（需手动解除）'
             : '手动锁定中（${s.manualLockUntilText} 自动恢复）');
+    final dayText = !s.dayUnlocked
+        ? '无'
+        : (s.dayUnlockUntilText.isEmpty || s.dayUnlockUntilText == '--'
+            ? '当日解锁（当天不锁定）'
+            : '当日解锁（当天不锁定，${s.dayUnlockUntilText} 自动恢复规则）');
+    final tempText = !s.tempUnlocked ? '无' : '临时解锁（至 ${s.unlockUntilText}）';
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -119,8 +134,10 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
               ),
               const SizedBox(width: 16),
-              _badge(manual ? '手动锁定中' : (locked ? '已锁定' : '未锁定'),
-                  manual ? const Color(0xFFC9523F) : (locked ? const Color(0xFFFF7A5A) : const Color(0xFF37C26B))),
+              _badge(label,
+                  manual
+                      ? const Color(0xFFC9523F)
+                      : (locked ? const Color(0xFFFF7A5A) : const Color(0xFF37C26B))),
               const SizedBox(width: 12),
               _badge(s.serviceRunning ? '守护中' : '未守护',
                   s.serviceRunning ? const Color(0xFF37C26B) : const Color(0xFFFF7A5A)),
@@ -130,7 +147,8 @@ class _HomePageState extends State<HomePage> {
           _infoRow('盒子时间', s.nowText),
           _infoRow('管控模式', '${s.mode == LockConfig.modeBlock ? '禁用时间段' : '开放时间段'}（${s.enabled ? '已启用' : '已停用'}）'),
           _infoRow('生效时间段', s.segmentsText),
-          _infoRow('临时解锁至', s.unlockUntil > 0 ? s.unlockUntilText : '无'),
+          _infoRow('当日解锁', dayText),
+          _infoRow('临时解锁', tempText),
           _infoRow('手动锁定', manualText),
           _infoRow('下次状态变化', s.nextTransitionText),
           _infoRow('锁屏显示中', s.lockVisible ? '是' : '否'),
@@ -149,9 +167,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _actions(KidStatus s) {
-    // 与状态卡片保持同一判定，保证徽标显示「手动锁定中」时，
-    // 「立即锁定」按钮本身已经切换成「解除手动锁定」
-    final manual = s.manualLock && !s.tempUnlocked;
+    // 当日解锁按钮双态：当日解锁 / 清除当日解锁，权限在临时解锁之上
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -162,17 +178,15 @@ class _HomePageState extends State<HomePage> {
           );
           await _refresh();
         }),
-        // 手动锁定按钮双态：未生效时「立即锁定」，生效时按钮本身变成「解除手动锁定」
         _btn(
-          manual ? '解除手动锁定' : '立即锁定',
-          manual ? const Color(0xFF263041) : const Color(0xFFC9523F),
+          s.dayUnlocked ? '清除当日解锁' : '当日解锁',
+          s.dayUnlocked ? const Color(0xFF263041) : const Color(0xFF37C26B),
           () => _run(
-            manual ? '解除手动锁定' : '立即锁定',
-            manual ? Bridge.clearUnlock : Bridge.lockNow,
+            s.dayUnlocked ? '清除当日解锁' : '当日解锁',
+            s.dayUnlocked ? Bridge.cancelDayUnlock : Bridge.unlockDay,
           ),
         ),
         // 临时解锁按钮两态：立即临时解锁 / 清除临时解锁
-        // 手动锁定会在下一个时段翻转点自动失效，无需占用此按钮
         _btn(
           s.tempUnlocked
               ? '清除临时解锁'

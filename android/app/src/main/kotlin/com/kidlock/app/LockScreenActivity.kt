@@ -74,10 +74,11 @@ class LockScreenActivity : Activity() {
             )
         )
 
-        // 若此刻已解锁（例如 Web 端刚点了临时解锁），直接退出
+        // 若此刻已解锁（例如 Web 端点了临时解锁 / 当日解锁），直接退出
         if (!TimeRule.isLocked(
                 cfg, System.currentTimeMillis(),
-                ConfigStore.getUnlockUntil(this), ConfigStore.getManualLock(this)
+                ConfigStore.getUnlockUntil(this), ConfigStore.getManualLock(this),
+                ConfigStore.getDayUnlockUntil(this)
             )
         ) {
             finish()
@@ -229,8 +230,9 @@ class LockScreenActivity : Activity() {
         val now = System.currentTimeMillis()
         val unlockUntil = ConfigStore.getUnlockUntil(this)
         val manual = ConfigStore.getManualLock(this)
+        val dayUntil = ConfigStore.getDayUnlockUntil(this)
 
-        if (!TimeRule.isLocked(cfg, now, unlockUntil, manual)) {
+        if (!TimeRule.isLocked(cfg, now, unlockUntil, manual, dayUntil)) {
             finish()
             return
         }

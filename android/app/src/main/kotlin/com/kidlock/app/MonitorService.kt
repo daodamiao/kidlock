@@ -87,7 +87,19 @@ class MonitorService : Service() {
                 Log.i(TAG, "manual lock until " + TimeRule.stamp(ConfigStore.getManualLockUntil(this)))
             }
             ACTION_CLEAR_UNLOCK -> {
-                // 同时清除临时解锁、手动锁定及其到期时间，回到纯规则判定
+                // 同时清除当日解锁、临时解锁、手动锁定及其到期时间，回到纯规则判定
+                ConfigStore.clearOverrides(this)
+            }
+            ACTION_UNLOCK_DAY -> {
+                // 当日解锁：权限最高，压住临时解锁与手动锁定，当天不再锁定；
+                // 到次日 00:00 自动失效，届时重新按时间段规则判定。
+                val now = System.currentTimeMillis()
+                ConfigStore.clearOverrides(this)
+                ConfigStore.setDayUnlockUntil(this, TimeRule.endOfToday(now))
+                Log.i(TAG, "day unlock until " + TimeRule.stamp(ConfigStore.getDayUnlockUntil(this)))
+            }
+            ACTION_CANCEL_DAY_UNLOCK -> {
+                // 取消当日解锁：清掉全部覆盖状态，立刻恢复时间锁定规则
                 ConfigStore.clearOverrides(this)
             }
             ACTION_BACKUP -> {
@@ -131,10 +143,17 @@ class MonitorService : Service() {
         val now = System.currentTimeMillis()
         var unlockUntil = ConfigStore.getUnlockUntil(this)
         var manual = ConfigStore.getManualLock(this)
+        var dayUntil = ConfigStore.getDayUnlockUntil(this)
 
         if (unlockUntil > 0L && now >= unlockUntil) {
             ConfigStore.setUnlockUntil(this, 0L)
             unlockUntil = 0L
+        }
+        // 当日解锁到次日 00:00 自动失效，回到时间段规则
+        if (dayUntil > 0L && now >= dayUntil) {
+            ConfigStore.setDayUnlockUntil(this, 0L)
+            dayUntil = 0L
+            Log.i(TAG, "day unlock auto-cleared at midnight")
         }
         // 手动锁定具有时效：走到时段翻转点即自动失效，由规则重新决定状态。
         // 旧实现只用一个持久化布尔值且无任何自动清除路径，导致定时规则全部失效。
@@ -144,9 +163,10 @@ class MonitorService : Service() {
             ConfigStore.clearOverrides(this)
             manual = false
             unlockUntil = 0L
+            dayUntil = 0L
             Log.i(TAG, "manual lock auto-cleared at schedule boundary")
         }
-        val locked = TimeRule.isLocked(cfg, now, unlockUntil, manual)
+        val locked = TimeRule.isLocked(cfg, now, unlockUntil, manual, dayUntil)
 
         if (locked) {
             enforceLock(now, cfg)
@@ -162,7 +182,7 @@ class MonitorService : Service() {
             LockScreenActivity.requestFinish()
         }
 
-        scheduleNext(cfg, now, unlockUntil)
+        scheduleNext(cfg, now, unlockUntil, dayUntil)
         ensureWeb(cfg, now)
     }
 
@@ -222,7 +242,8 @@ class MonitorService : Service() {
         try {
             if (!TimeRule.isLocked(
                     ConfigStore.load(this), System.currentTimeMillis(),
-                    ConfigStore.getUnlockUntil(this), ConfigStore.getManualLock(this)
+                    ConfigStore.getUnlockUntil(this), ConfigStore.getManualLock(this),
+                    ConfigStore.getDayUnlockUntil(this)
                 )
             ) {
                 return
@@ -417,8 +438,8 @@ class MonitorService : Service() {
 
     // ------------------------------------------------------------------ 定时 / 自保活
 
-    private fun scheduleNext(cfg: LockConfig, now: Long, unlockUntil: Long) {
-        var next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil)
+    private fun scheduleNext(cfg: LockConfig, now: Long, unlockUntil: Long, dayUntil: Long = 0L) {
+        var next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil, dayUntil)
         // 手动锁定到期也是一次必须唤醒的状态重估点
         val manualUntil = ConfigStore.getManualLockUntil(this)
         if (ConfigStore.getManualLock(this) && manualUntil > now && manualUntil < next) {
@@ -460,6 +481,8 @@ class MonitorService : Service() {
         const val ACTION_UNLOCK_ONCE = "com.kidlock.app.action.UNLOCK_ONCE"
         const val ACTION_LOCK_NOW = "com.kidlock.app.action.LOCK_NOW"
         const val ACTION_CLEAR_UNLOCK = "com.kidlock.app.action.CLEAR_UNLOCK"
+        const val ACTION_UNLOCK_DAY = "com.kidlock.app.action.UNLOCK_DAY"
+        const val ACTION_CANCEL_DAY_UNLOCK = "com.kidlock.app.action.CANCEL_DAY_UNLOCK"
         const val ACTION_RESTART_WEB = "com.kidlock.app.action.RESTART_WEB"
         const val ACTION_BACKUP = "com.kidlock.app.action.BACKUP"
 
@@ -595,8 +618,10 @@ class MonitorService : Service() {
             val unlockUntil = ConfigStore.getUnlockUntil(c)
             val manual = ConfigStore.getManualLock(c)
             val manualUntil = if (manual) ConfigStore.getManualLockUntil(c) else 0L
-            val locked = TimeRule.isLocked(cfg, now, unlockUntil, manual)
-            var next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil)
+            val dayUntil = ConfigStore.getDayUnlockUntil(c)
+            val dayUnlocked = dayUntil > now
+            val locked = TimeRule.isLocked(cfg, now, unlockUntil, manual, dayUntil)
+            var next = TimeRule.nextTransitionAfter(cfg, now, unlockUntil, dayUntil)
             // 手动锁定到期本身就是一次状态重估，必须纳入「下次状态变化」，
             // 否则页面会显示一个被手动锁定压住、实际并不会发生的翻转时刻
             if (manual && manualUntil > now && manualUntil < next) next = manualUntil
@@ -610,9 +635,21 @@ class MonitorService : Service() {
             m["unlockUntilText"] = TimeRule.stamp(unlockUntil)
             // 是否正处于「临时解锁」状态（前端据此切换「临时解锁 / 清除临时解锁」按钮文案）
             m["tempUnlocked"] = unlockUntil > now
+            // 当日解锁：权限在临时解锁之上，生效期间当天不锁定
+            m["dayUnlocked"] = dayUnlocked
+            m["dayUnlockUntil"] = dayUntil
+            m["dayUnlockUntilText"] = TimeRule.stamp(dayUntil)
             m["manualLock"] = manual
             m["manualLockUntil"] = manualUntil
             m["manualLockUntilText"] = TimeRule.stamp(manualUntil)
+            // 状态徽标文案由服务端统一给出，避免 Web / TV 两端判定不一致
+            m["stateLabel"] = when {
+                dayUnlocked -> "当日解锁"
+                unlockUntil > now -> "临时解锁"
+                manual -> "手动锁定中"
+                locked -> "已锁定"
+                else -> "未锁定"
+            }
             m["nextTransition"] = if (next == Long.MAX_VALUE) 0L else next
             m["nextTransitionText"] = TimeRule.stamp(next)
             m["lockVisible"] = LockScreenActivity.isVisible()

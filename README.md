@@ -3,9 +3,9 @@
 基于 **Android 7.1.2（API 25）+ Amlogic 四核 arm64-v8a （N1）电视盒子** 测试开发的儿童限时管控 App，其他64位安卓设备可自行尝试。
 TV 端界面用 **Flutter（Dart）**，系统级能力（常驻服务 / 全屏锁屏 / 按键拦截 / 杀进程 / 设备管理器 / 内嵌 Web 服务）用 **Kotlin 原生**实现，二者通过 MethodChannel 通信。
 
-> **当前版本：v1.4.6（versionCode 11）**。版本源为 `pubspec.yaml` 的 `version: 1.4.6+11`，`build.gradle.kts` 读取 `flutter.versionCode` / `flutter.versionName`；发布包 `app-release-v1.4.6.apk`。
+> **当前版本：v1.4.7（versionCode 12）**。版本源为 `pubspec.yaml` 的 `version: 1.4.7+12`，`build.gradle.kts` 读取 `flutter.versionCode` / `flutter.versionName`；发布包 `app-release-v1.4.7.apk`。
 >
-> v1.4.6 修复**手动锁定到开放时段不会自动恢复**和**跨零点时段在当天凌晨误命中**的问题。v1.4.5 修复**网页遥控器按键失效**：不再依赖应用自身注入按键，改为**优先复用盒子自带的 `8080/v1/keyevent` 系统遥控服务**（详见「五、7. Web 遥控器」）。v1.4.4 为编译修复版（删除无障碍配置里非法的 `android:flags`）。
+> v1.4.7 为正式发布版，修复 v1.4.6 以来的稳定性和兼容性问题，并同步更新正式版本标识。v1.4.6 修复**手动锁定到开放时段不会自动恢复**和**跨零点时段在当天凌晨误命中**的问题。v1.4.5 修复**网页遥控器按键失效**：不再依赖应用自身注入按键，改为**优先复用盒子自带的 `8080/v1/keyevent` 系统遥控服务**（详见「五、7. Web 遥控器」）。v1.4.4 为编译修复版（删除无障碍配置里非法的 `android:flags`）。
 
 ---
 This project source code is available for non-commercial use only. Commercial use requires written authorization. 
@@ -180,9 +180,11 @@ adb shell appops set com.kidlock.app GET_USAGE_STATS allow     # 推荐
 - **移动端适配**：`config_page.html` 内置 `@media (max-width: 640px)` 断点 —— 控件纵向铺满、输入框 16px（避免 iOS 聚焦缩放）、按钮 ≥44px、虚拟按键 4 列网格、状态表收窄标签列。
 - **权限模型**：`GET` 类接口免密（配置、状态、截图）；写操作经密码弹窗（`askPassword()`）校验后提交，密码只缓存在内存用于弹窗预填。
 - **序列查看**：隐藏态渲染「查看」按钮，验证密码后经 `POST /api/action {action:"showKeys"}` 拉取真实序列，按钮转为「隐藏」；未点过「查看」时保存不会提交序列，服务端保持原值。
-- **临时解锁按钮**：`status.tempUnlocked` 驱动两态文案「立即临时解锁 / 清除临时解锁」，分别对应 `unlock` / `clearUnlock`。
-- **手动锁定按钮**：以 `status.manualLock && !status.tempUnlocked` 判定手动锁定生效，Web 的「立即锁定」与 TV 端同名按钮都会就地变成「解除手动锁定」（`clearUnlock`）；同时状态徽标与状态行显示「手动锁定中」。
-- **手动锁定的时效**：`ACTION_LOCK_NOW` 同时写入 `manual_lock_until` = 按规则计算的**下一个时段翻转点**；`evaluate()` 到点自动清除，`ConfigStore.getManualLock()` 也把过期标记视为无效（服务 / 锁屏页 / 状态接口三处判定一致）。`clearUnlock`、单次解锁、解锁序列成功都会清掉该覆盖状态，**不会**再出现「点一次立即锁定，定时规则永久失效」。生效期间状态面板显示「手动锁定中」及自动恢复时间，`nextTransition` 已计入到期点。
+- **状态覆盖优先级（高 → 低）**：`当日解锁（当天不锁定） > 临时解锁（N 分钟） > 手动锁定 > 时间段规则`，统一由 `TimeRule.isLocked()` 单点判定，守护服务 / 锁屏页 / 状态接口共用同一结果。
+- **当日解锁按钮**：`status.dayUnlocked` 驱动双态「当日解锁 / 清除当日解锁」，对应 `unlockDay` / `cancelDayUnlock`。`ACTION_UNLOCK_DAY` 写入 `day_unlock_until` = **本地次日 00:00**，生效期间当天不锁定；到点自动失效，或点「清除当日解锁」立刻回到时间段规则。
+- **临时解锁按钮**：`status.tempUnlocked` 驱动两态「立即临时解锁 / 清除临时解锁」，对应 `unlock` / `clearUnlock`；权限低于当日解锁、高于手动锁定。
+- **状态徽标**：服务端 `stateLabel` 统一给出「当日解锁 / 临时解锁 / 手动锁定中 / 已锁定 / 未锁定」，Web 与 TV 端不再各自判定，也不会把解锁状态笼统显示成「未锁定」。
+- **手动锁定**：`ACTION_LOCK_NOW` 仍保留（API 可用），但界面不再提供入口；`manual_lock_until` = 下一个时段翻转点，到点自动清除。旧 APK 残留标记升级后自动失效，不会永久压住规则。
 - **跨零点段语义**：`20:00-次日09:30` 只在**生效日 20:00~24:00** 与**次日 00:00~09:30** 命中；旧实现 `covers()` 用 `minute >= start || minute < end`，让生效日当天凌晨也命中（周六 00:00-09:30 被误判为开放），现改为 `coversToday()` 当日只判 `>= start`，次日凌晨交给 `prevDow` 分支。
 - **截图**：`ScreenCapture`（`MediaProjection` + `VirtualDisplay` + `ImageReader`）抓一帧编码为 JPEG；未授权时 `GET /api/screen` 会拉起 `CaptureActivity` 弹系统授权框并返回 `needConsent`，前端每 2s 轮询等待。授权期间 `isConsentUiActive()` 让守护服务暂缓抢占前台，避免授权框被锁屏页顶掉。
 
@@ -297,8 +299,10 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 | `segmentsText` | **按星期分组**的生效时间段描述（如 `周一到周五 18:00-20:00`、`周六到周日 全天`，多组以 `\n` 分隔） |
 | `foreground` / `foregroundName` | 前台应用包名 / 显示名；**锁屏期间为「锁屏前的应用」**（被暂停在后台那个） |
 | `foregroundPreLock` | `true` 表示当前 `foreground` 是锁屏前的应用 |
-| `tempUnlocked` | 是否处于临时解锁状态（前端据此切换「临时解锁 / 清除临时解锁」按钮文案） |
-| `manualLock` / `manualLockUntil` / `manualLockUntilText` | 手动锁定是否仍有效 / 自动失效时刻 / 可读时间；`nextTransition` 已计入该到期点，配置页据此显示「解除手动锁定」 |
+| `dayUnlocked` / `dayUnlockUntil` / `dayUnlockUntilText` | 当日解锁是否生效（权限最高） / 次日 00:00 到期时刻 / 可读时间；`nextTransition` 已计入该到期点 |
+| `stateLabel` | 服务端统一给出的状态徽标文案：当日解锁 / 临时解锁 / 手动锁定中 / 已锁定 / 未锁定 |
+| `tempUnlocked` / `unlockUntil` | 是否处于临时解锁状态 / 限时解锁截止时刻（前端据此切换「临时解锁 / 清除临时解锁」按钮文案） |
+| `manualLock` / `manualLockUntil` / `manualLockUntilText` | 手动锁定是否仍有效 / 自动失效时刻 / 可读时间；`nextTransition` 已计入该到期点 |
 | `version` | v1.4.2 起：安装包版本名（由 `pubspec.yaml` 驱动，配置页 / 遥控器页展示） |
 | `accessibility` | v1.4.3：无障碍服务是否已开启；仅当 8080 服务不可用时，遥控器页据此显示「去开启」提示条 |
 | `bridge` / `bridgeDetail` | 盒子系统遥控服务（8080）是否可用 / 可读状态（如 `已连接 127.0.0.1:8080`）；遥控器页顶部状态条据此显示并提供「重新检测」 |
@@ -344,7 +348,8 @@ adb shell dpm set-device-owner com.kidlock.app/.KidDeviceAdmin
 |---|---|
 | 浏览器打不开 | 确认电脑 / 手机与盒子同网段；端口被占用可改成 8081 后保存 |
 | Web 端口能不能设成 8080 | **不能**。8080 是盒子系统遥控服务的端口，遥控器桥接要复用它；被 KidLock 自己占用后桥接会连到自己身上导致按键失效。Web 端口用 9090（默认）或 8081 等其它端口 |
-| 点过「立即锁定」后，到开放时段也不解锁 | 旧版 `manual_lock` 是持久化布尔且优先级高于时段判定，会把规则永久压住。现已修复：手动锁定只到**下一个时段翻转点**自动失效；生效期间状态徽标与状态行显示「手动锁定中」及恢复时间，「立即锁定」按钮本身变成「解除手动锁定」可立即恢复规则。若设备仍跑旧 APK，可执行 `POST /api/action {"pwd":"...","action":"clearUnlock"}` 立即清除 |
+| 临时解锁后状态只显示「未锁定」 | 已改为按覆盖状态显示：临时解锁显示**「临时解锁」**、当日解锁显示**「当日解锁」**，由服务端 `stateLabel` 统一给出，Web 与 TV 一致 |
+| 点过手动锁定后，到开放时段也不解锁 | 旧版 `manual_lock` 是持久化布尔且优先级高于时段判定。现已修复：手动锁定只到**下一个时段翻转点**自动失效；旧 APK 残留标记升级后自动失效。界面已移除手动锁定入口，可用「当日解锁 / 临时解锁」覆盖，或执行 `POST /api/action {"pwd":"...","action":"clearUnlock"}` 清除全部覆盖 |
 | 还没到开放时段，盒子却显示「未锁定」 | 旧版跨零点段（如周六 `20:00-次日09:30`）会让**生效日当天 00:00-09:30** 也被判为开放。已修正为只在生效日 20:00 后、次日 09:30 前生效；升级 APK 后按新规则判定 |
 | 到点没锁住 | 看 App 首页「守护中」徽标；`adb shell dumpsys activity services com.kidlock.app` |
 | 杀不掉播放器 | 授权 `GET_USAGE_STATS`；部分系统级播放器可改为开启「到点黑屏锁屏」 |

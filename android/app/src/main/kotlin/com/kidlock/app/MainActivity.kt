@@ -142,6 +142,16 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
 
+                        "unlockDay" -> {
+                            MonitorService.act(this, MonitorService.ACTION_UNLOCK_DAY)
+                            result.success(true)
+                        }
+
+                        "cancelDayUnlock" -> {
+                            MonitorService.act(this, MonitorService.ACTION_CANCEL_DAY_UNLOCK)
+                            result.success(true)
+                        }
+
                         "lockNow" -> {
                             MonitorService.act(this, MonitorService.ACTION_LOCK_NOW)
                             result.success(true)

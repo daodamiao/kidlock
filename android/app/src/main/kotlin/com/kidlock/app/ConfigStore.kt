@@ -20,6 +20,7 @@ object ConfigStore {
     private const val K_UNLOCK_UNTIL = "unlock_until"
     private const val K_MANUAL_LOCK = "manual_lock"
     private const val K_MANUAL_LOCK_UNTIL = "manual_lock_until"
+    private const val K_DAY_UNLOCK_UNTIL = "day_unlock_until"
 
     private const val BACKUP_FILE = "kidlock_config.json"
     private const val PUBLIC_DIR = "KidLock"
@@ -191,12 +192,23 @@ object ConfigStore {
         prefs(c).edit().putLong(K_MANUAL_LOCK_UNTIL, ts).apply()
     }
 
+    /**
+     * 「当日解锁」到期时间戳（本地次日 00:00），0 = 未启用。
+     * 生效期间当天不锁定；清除当日解锁即回到纯时间段规则判定。
+     */
+    fun getDayUnlockUntil(c: Context): Long = prefs(c).getLong(K_DAY_UNLOCK_UNTIL, 0L)
+
+    fun setDayUnlockUntil(c: Context, ts: Long) {
+        prefs(c).edit().putLong(K_DAY_UNLOCK_UNTIL, ts).apply()
+    }
+
     /** 一次清掉所有「覆盖定时规则」的临时状态，回到纯规则判定。 */
     fun clearOverrides(c: Context) {
         prefs(c).edit()
             .putLong(K_UNLOCK_UNTIL, 0L)
             .putBoolean(K_MANUAL_LOCK, false)
             .putLong(K_MANUAL_LOCK_UNTIL, 0L)
+            .putLong(K_DAY_UNLOCK_UNTIL, 0L)
             .apply()
     }
 

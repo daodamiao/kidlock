@@ -27,6 +27,8 @@ class Bridge {
   static Future<void> unlockOnce() => _c.invokeMethod('unlockOnce');
   static Future<void> clearUnlock() => _c.invokeMethod('clearUnlock');
   static Future<void> lockNow() => _c.invokeMethod('lockNow');
+  static Future<void> unlockDay() => _c.invokeMethod('unlockDay');
+  static Future<void> cancelDayUnlock() => _c.invokeMethod('cancelDayUnlock');
   static Future<void> restartWeb() => _c.invokeMethod('restartWeb');
 
   /// 立即把配置备份到外部存储，返回备份文件路径（失败返回空串）
